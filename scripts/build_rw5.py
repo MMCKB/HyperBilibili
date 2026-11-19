@@ -1,8 +1,3 @@
-import os
-import buildtools
+import build
 
-DESIGN_WIDTH = 432
-
-buildtools.setManifestDesignWidth(DESIGN_WIDTH)
-
-os.system("yarn run build")
+raise SystemExit(build.main(["--width", "432", "--label", "RW5"]))

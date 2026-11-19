@@ -3,6 +3,7 @@
 **/node_modules/
 /sign
 /dist
+/out
 /build
 .husky/
 */__pycache__

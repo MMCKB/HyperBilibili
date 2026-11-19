@@ -1,46 +1,111 @@
-name: Build and Upload rpk
+name: Build and Release rpk
 
 on:
   push:
     branches:
-      - next-gen
+      - Next
+    paths-ignore:
+      - '**.md'
+      - 'designs/**'
+      - 'prototype/**'
   pull_request:
     branches:
-      - next-gen
+      - Next
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '版本号，比如 2.5.1。编译完会打 v2.5.1 的 tag 并发 release'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
 
 jobs:
   build:
+    name: 编译 ${{ matrix.label }}
     runs-on: ubuntu-latest
-
+    timeout-minutes: 30
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - label: S3S4
+            width: 466
+          - label: RW5
+            width: 432
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4.1.7
+      - name: 检出代码
+        uses: actions/checkout@v7
 
-    - name: Set up Node.js
-      uses: actions/setup-node@v4.0.3
-      with:
-        node-version: '20'
+      - name: 配置 Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 'lts/*'
+          check-latest: true
+          cache: yarn
 
-    - name: Install Yarn
-      run: npm install -g yarn
+      - name: 安装依赖
+        run: |
+          command -v yarn >/dev/null 2>&1 || npm install -g yarn
+          yarn --frozen-lockfile --non-interactive
 
-    - name: Install dependencies
-      run: yarn
+      - name: 编译
+        env:
+          VERSION: ${{ inputs.version }}
+        run: python3 scripts/build.py --width ${{ matrix.width }} --label ${{ matrix.label }}
 
-    - name: Build project (s3/s4)
-      run: python scripts/build_s3s4.py
+      - name: 上传产物
+        uses: actions/upload-artifact@v7
+        with:
+          name: rpk-${{ matrix.label }}
+          path: out/*.rpk
+          if-no-files-found: error
+          retention-days: 14
 
-    - name: Upload rpk file (s3/s4)
-      uses: actions/upload-artifact@v4.3.6
-      with:
-        name: RPK (Design Width 466) (For S3 S4)
-        path: dist/**/*.rpk
+  release:
+    name: 发布 release
+    needs: build
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: 下载产物
+        uses: actions/download-artifact@v8
+        with:
+          path: release
+          merge-multiple: true
 
-    - name: Build project (rw5)
-      run: python scripts/build_rw5.py
-
-    - name: Upload rpk file (rw5)
-      uses: actions/upload-artifact@v4.3.6
-      with:
-        name: RPK (Design Width 432) (RW5)
-        path: dist/**/*.rpk
+      - name: 打 tag 并发布
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::版本号格式不对：$VERSION"
+            exit 1
+          fi
+          tag="v${VERSION}"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "::error::${tag} 已经发过了，换个版本号"
+            exit 1
+          fi
+          {
+            echo "开发版 ${VERSION}"
+            echo
+            echo "- 设计宽度 466（S3/S4）"
+            echo "- 设计宽度 432（RW5）"
+            echo "- 基于提交 ${GITHUB_SHA:0:7} 构建"
+          } > release-notes.md
+          ls -l release
+          gh release create "$tag" release/*.rpk \
+            --target "$GITHUB_SHA" \
+            --title "澎湃哔哩 ${tag}" \
+            --notes-file release-notes.md
