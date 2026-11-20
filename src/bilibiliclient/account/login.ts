@@ -7,20 +7,31 @@ export const BilibiliClientLoginMethods = {
     async updateAccountInfo(this: any): Promise<boolean> {
         const accountInfoResponse = await this.getRequest("https://api.bilibili.com/x/web-interface/nav");
 
+        // 请求失败（网络问题）时 getRequest 返回 undefined，不能当成“会话失效”
+        if (!accountInfoResponse || !accountInfoResponse.data || !accountInfoResponse.data.data) {
+            global.logger.error('获取账号信息失败，保留当前登录状态');
+            return false;
+        }
+
         if(!accountInfoResponse.data.data.isLogin){
             router.clear();
             router.replace({
                 uri: "pages/error/sessionood"
             })
+            return false;
         }
 
         this.accountInfo = accountInfoResponse.data.data;
-        return !!this.accountInfo;
+        return true;
     },
 
     // 刷新BUVID
     async updateBUVID(this: any) {
         const response = await this.getRequest("https://api.bilibili.com/x/frontend/finger/spi");
+        if (!response || !response.data || !response.data.data) {
+            global.logger.log('获取BUVID失败');
+            return;
+        }
         this.buvid3 = response.data.data.b_3;
         this.buvid4 = response.data.data.b_4;
     },
@@ -47,7 +58,11 @@ export const BilibiliClientLoginMethods = {
             this.sid = accountData.sid;
             global.logger.log('使用存储的账号数据登录成功');
             global.logger.log('拉账号信息')
-            await this.updateAccountInfo();
+            const accountInfoOk = await this.updateAccountInfo();
+            if (!accountInfoOk) {
+                // 让入口页保留本地账号并给用户重试机会，而不是带着空的账号信息进入主页
+                return { success: false, message: "获取账号信息失败，请重试" };
+            }
             global.logger.log('拉buvid')
             await this.updateBUVID();
 
@@ -60,7 +75,10 @@ export const BilibiliClientLoginMethods = {
                 this.extractCookiesFromResponse(response.headers['Set-Cookie']);
                 await this.storeAccountData();
                 global.logger.log('使用二维码登录并存储账号数据成功');
-                await this.updateAccountInfo();
+                // 二维码已被消费，这里即使拉账号信息失败也应继续，避免用户卡在登录页
+                if (!(await this.updateAccountInfo())) {
+                    global.logger.error('二维码登录后获取账号信息失败');
+                }
                 await this.updateBUVID();
                 return { success: true, message: "登录成功" };
             } else {
@@ -69,9 +87,38 @@ export const BilibiliClientLoginMethods = {
         }
     },
 
-    // 退出登录（删除本地存储的账号数据）
-    logOut(this: any) {
-        storage.delete({ key: "bilibili_account" });
+    // 退出登录（清除内存中的登录态并删除本地存储的账号数据）
+    logOut(this: any): Promise<boolean> {
+        this.sessData = null;
+        this.biliJct = null;
+        this.dedeUserID = null;
+        this.sid = null;
+        this.accountInfo = null;
+
+        return new Promise((resolve) => {
+            let settled = false;
+            const finish = (ok: boolean) => {
+                if (settled) return;
+                settled = true;
+                resolve(ok);
+            };
+            const timer = setTimeout(() => {
+                global.logger.warn('删除账号数据超时');
+                finish(false);
+            }, 1500);
+            storage.delete({
+                key: "bilibili_account",
+                success: () => {
+                    clearTimeout(timer);
+                    finish(true);
+                },
+                fail: (data: any, code: number) => {
+                    clearTimeout(timer);
+                    global.logger.log(`删除账号数据失败，错误码 = ${code}`);
+                    finish(false);
+                }
+            });
+        });
     },
 
     // 从响应头中提取Cookies
@@ -97,14 +144,36 @@ export const BilibiliClientLoginMethods = {
     // 获取本地存储的账号数据
     async getStoredAccountData(this: any): Promise<AccountData | null> {
         return new Promise((resolve) => {
+            let settled = false;
+            const finish = (value: AccountData | null) => {
+                if (settled) return;
+                settled = true;
+                resolve(value);
+            };
+            // 存储层不回调时不能永远卡住登录流程
+            const timer = setTimeout(() => {
+                global.logger.warn('读取账号数据超时');
+                finish(null);
+            }, 2000);
             storage.get({
                 key: 'bilibili_account',
                 success: (data: string) => {
-                    resolve(data ? JSON.parse(data) as AccountData : null);
+                    clearTimeout(timer);
+                    if (!data) {
+                        finish(null);
+                        return;
+                    }
+                    try {
+                        finish(JSON.parse(data) as AccountData);
+                    } catch (e) {
+                        global.logger.error('解析账号数据失败:', e);
+                        finish(null);
+                    }
                 },
                 fail: (data: any, code: number) => {
+                    clearTimeout(timer);
                     global.logger.log(`获取存储的账号数据失败，错误码 = ${code}`);
-                    resolve(null);
+                    finish(null);
                 }
             });
         });
@@ -129,5 +198,6 @@ export const BilibiliClientLoginMethods = {
                 });
             });
         }
+        global.logger.error('账号数据不完整，未写入本地存储');
     }
 };

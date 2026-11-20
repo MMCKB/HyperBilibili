@@ -17,10 +17,12 @@
 
 <script>
 import router from "@system.router"
+import prompt from "@system.prompt"
 export default {
   private: {
     show_content: false,
-    content: false,
+    content: [],
+    saving: false,
     anims: {
       show_loading: false
     }
@@ -30,19 +32,44 @@ export default {
     this.anims.loading.start()
 
     // 预留init时间
-    setTimeout(async() => {
-      var html = await global.biliclient.getEulaShowContent()
-      this.content = this.$app.$def.htmlparser.parseContentHtml(html)
-
-      this.show_content = true
-      this.anims.show_loading = false
-      this.anims.loading.stop()
+    this._loadEulaTimer = setTimeout(async() => {
+      try {
+        // 冷启动时 app.onCreate 可能还没执行完，等 BilibiliClient 就绪
+        let waited = 0
+        while (!global.biliclient && waited < 10000) {
+          await new Promise((resolve) => setTimeout(resolve, 300))
+          waited += 300
+        }
+        if (!global.biliclient) {
+          throw new Error("biliclient not ready")
+        }
+        var html = await global.biliclient.getEulaShowContent()
+        this.content = this.$app.$def.htmlparser.parseContentHtml(html)
+      } catch (e) {
+        global.logger.error("加载协议内容失败:", e)
+        this.content = []
+      } finally {
+        // 内容加载失败也必须显示按钮，否则用户无法同意/退出，只能重启
+        this.show_content = true
+        this.anims.show_loading = false
+        this.anims.loading.stop()
+      }
     }, 1500);
   },
-  Agree(){
-    global.settings.saveSettings({
+  async Agree(){
+    if (this.saving) return
+    this.saving = true
+
+    // 等写入磁盘成功后再跳转，避免“内存里已同意、磁盘上仍是 false”导致下次启动又回协议页
+    const saved = await global.settings.saveSettings({
       agreedAllAgreements: true
     })
+    this.saving = false
+
+    if (!saved) {
+      prompt.showToast({ message: "协议状态保存失败，请重试", duration: 3000 })
+      return
+    }
 
     router.clear()
     router.replace({
@@ -56,6 +83,13 @@ export default {
   onInit(){
     global.animengine.defaults.loading.CreateLoadingAnimation(this)
     this.LoadEula()
+  },
+  onDestroy(){
+    if (this._loadEulaTimer) {
+      clearTimeout(this._loadEulaTimer)
+      this._loadEulaTimer = null
+    }
+    global.animengine.clearPageAnims(this.$page.name)
   }
 }
 </script>

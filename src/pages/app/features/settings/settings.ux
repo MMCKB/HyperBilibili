@@ -96,7 +96,7 @@ export default {
   SwitchSet(name) {
     if (name === "enable_full_anim") {
       this.enableFullAnimation = !this.enableFullAnimation;
-      global.settings.saveSettings({ enableFullAnimation: this.enableFullAnimation });
+      this.SaveSettings({ enableFullAnimation: this.enableFullAnimation });
 
       if (this.enableFullAnimation) {
         prompt.showToast({
@@ -126,7 +126,7 @@ export default {
     if (mapping[name]) {
       const { current, max, min, key } = mapping[name];
       const newValue = current < max ? current + 1 : min;
-      global.settings.saveSettings({ [key]: newValue });
+      this.SaveSettings({ [key]: newValue });
       
       // 延时更新视图
       setTimeout(() => {
@@ -146,18 +146,29 @@ export default {
         index = (index + 1) % pages.length;
         this.startupPage = pages[index];
       }
-      global.settings.saveSettings({
+      this.SaveSettings({
         startupPage: this.startupPage
       });
       this.UpdateNumView();
     }
   },
-  logout() {
-    global.biliclient.logOut()
+  async logout() {
+    // 等本地账号真正删除后再回入口页，避免入口页读到残留账号又自动登录
+    await global.biliclient.logOut()
     router.clear()
     router.replace({
       uri: "pages/app/entry/splash"
     })
+  },
+  async SaveSettings(params) {
+    const saved = await global.settings.saveSettings(params)
+    if (!saved) {
+      prompt.showToast({
+        message: "设置保存失败，请重试",
+        duration: 3000
+      })
+    }
+    return saved
   },
   UpdateNumView() {
     this.fresh_type = global.settings.SETTINGS.fresh_type

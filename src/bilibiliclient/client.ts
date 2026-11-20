@@ -45,9 +45,11 @@ class BilibiliClient {
     });
 
     constructor() {
-        //@ts-ignore
-        this.updateBUVID();
         this.fetch = fetch;
+        //@ts-ignore
+        this.updateBUVID().catch((e: any) => {
+            global.logger.error("updateBUVID failed:", e);
+        });
     }
 }
 

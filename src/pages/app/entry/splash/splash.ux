@@ -13,6 +13,8 @@
 import router from "@system.router"
 export default {
   private: {
+    // 防止 onShow 重入时产生多条入口判定链
+    decided: false,
     anims: {
       splash: null,
       splash_out: null,
@@ -44,28 +46,64 @@ export default {
       100
     )
     this.anims.splash.start()
-    setTimeout(() => {
+    this._splashTimer1 = setTimeout(() => {
       this.anims.splash_out.start()
-      setTimeout(async() => {
-        if((await this.$app.$def.jumpcheck.NetworkCheck())){
-          if(!global.settings.SETTINGS.agreedAllAgreements){
-            router.replace({
-              uri: "pages/app/entry/eularead"
-            })
-          }
-          else{
-            this.$app.$def.jumpcheck.Jump()
-          }
-        }
-        else{
+      this._splashTimer2 = setTimeout(async() => {
+        try {
+          await this.DecideJump()
+        } catch (e) {
+          global.logger.error("[splash] DecideJump failed:", e)
           router.replace({
-            uri: "pages/error/networkerror"
+            uri: "pages/app/entry/eularead"
           })
         }
       }, 500)
     }, 1000)
   },
+  async DecideJump() {
+    if (this.decided) return
+    this.decided = true
+
+    if (!(await this.$app.$def.jumpcheck.NetworkCheck())) {
+      router.replace({
+        uri: "pages/error/networkerror"
+      })
+      return
+    }
+
+    // 上面的延时只是动画需要，不能当作“设置已加载”的保证。
+    // 这里等设置真正读取完成（onCreate 中已发起，复用同一个 Promise；失败会自动重试）。
+    const settingsReadable = await global.settings.loadSettings()
+    const agreed = global.settings.SETTINGS.agreedAllAgreements
+    global.logger.log("[splash] settingsReadable =", settingsReadable, ", agreedAllAgreements =", agreed)
+
+    if (agreed) {
+      this.$app.$def.jumpcheck.Jump()
+      return
+    }
+
+    // 设置没读出来时 SETTINGS 只是默认值，不能据此判定用户未同意协议。
+    // 本地已有账号说明此前完成过“同意协议→登录”的流程，不能因为一次读取失败把用户送回协议页。
+    // 注意：只在“读取失败”时兜底；明确读到 false 时仍然展示协议页。
+    if (!settingsReadable && (await this.$app.$def.jumpcheck.HasStoredAccount())) {
+      global.logger.warn("[splash] settings load failed but stored account exists, skip eula page")
+      this.$app.$def.jumpcheck.Jump()
+      return
+    }
+
+    router.replace({
+      uri: "pages/app/entry/eularead"
+    })
+  },
   onDestroy() {
+    if (this._splashTimer1) {
+      clearTimeout(this._splashTimer1)
+      this._splashTimer1 = null
+    }
+    if (this._splashTimer2) {
+      clearTimeout(this._splashTimer2)
+      this._splashTimer2 = null
+    }
     global.animengine.clearPageAnims("splashPage")
   }
 }

@@ -50,22 +50,22 @@ export default {
     },
     scrclass: ""
   },
-  LongPressHandle(id) {
+  async LongPressHandle(id) {
     if (global.settings.SETTINGS.pinnedDMUsers.includes(id)) {
-      global.settings.saveSettings({
+      const saved = await global.settings.saveSettings({
         pinnedDMUsers: global.settings.SETTINGS.pinnedDMUsers.filter((item) => item !== id)
       })
       prompt.showToast({
-        message: "已取消固定"
+        message: saved ? "已取消固定" : "操作保存失败，请重试"
       })
     } else {
       var pinnedDMUsers = global.settings.SETTINGS.pinnedDMUsers
       pinnedDMUsers.push(id)
-      global.settings.saveSettings({
+      const saved = await global.settings.saveSettings({
         pinnedDMUsers
       })
       prompt.showToast({
-        message: "成功固定该用户"
+        message: saved ? "成功固定该用户" : "操作保存失败，请重试"
       })
     }
     this.InitSessions()

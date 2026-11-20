@@ -41,6 +41,11 @@ export default {
     settings.loadSettings()
     global.settings = settings
 
+    // 尽早创建客户端：后续 await（文件、设备信息等）较慢，
+    // 入口页/协议页不应依赖 onCreate 末尾的这一步才能工作
+    console.log("appinit > createBiliClient")
+    global.biliclient = new BilibiliClient()
+
     console.log("appinit > initSavedContentManager")
     await savedcontent.SavedContentManager.initialize()
     global.savedcontent = savedcontent
@@ -53,9 +58,6 @@ export default {
     console.log("appinit > initBgImg")
     this.bgimg.Init()
     global.bgimg = this.bgimg
-
-    console.log("appinit > createBiliClient")
-    global.biliclient = new BilibiliClient()
   },
   onDestroy() {
     console.log("app destroyed")
