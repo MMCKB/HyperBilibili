@@ -1,33 +1,26 @@
-// 以下任何涉及到负移动的动画（例如openpage-scroll）
-// 都需要使用animation-direction: reverse进行播放
+// 以下任何涉及到负移动的动画都需要使用animation-direction: reverse进行播放
 // 这是由于傻逼vela快应用框架不支持keyframes数值自减导致的
 
-// 需要reverse
-@keyframes openpage-scroll {
+// 桌面卡片式翻页：新页面从右侧推入，旧页面同时左移、缩小并压暗。
+// 关键帧数值递增，进入时用reverse播放（500px/0.96 -> 0px/1）；退出时正向播放。
+@keyframes page-card-slide {
     0% {
         transform: translateX(0px) scale(1);
     }
     100% {
-        transform: translateX(500px) scale(0.75);
+        transform: translateX(500px) scale(0.96);
     }
 }
 
-// 需要reverse
-@keyframes fromback-scroll {
+// 旧页的卡片视差状态：0%为压暗缩小的背景态，100%为原位。
+// 前进时reverse（0/1 -> -84px/0.9/0.55），返回时正向（-84px/0.9/0.55 -> 0/1）。
+@keyframes page-card-backdrop {
     0% {
-        transform: translateY(232px) scale(1);
+        opacity: 0.55;
+        transform: translateX(-84px) scale(0.9);
     }
     100% {
-        transform: translateY(0px) scale(0.75);
-    }
-}
-
-// 无需reverse
-@keyframes backpage-scroll {
-    0% {
+        opacity: 1;
         transform: translateX(0px) scale(1);
-    }
-    100% {
-        transform: translateX(500px) scale(0.75);
     }
 }

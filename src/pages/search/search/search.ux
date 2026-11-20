@@ -3,7 +3,7 @@
 
 <template>
   <div class="page">
-    <image style="position: absolute; left: 0px" src="{{getBgImg}}"></image>
+    <image class="page-bg-anim {{scrclass}}" style="position: absolute; left: 0px" src="{{getBgImg}}"></image>
     <scroll class="scroll {{scrclass}}" scroll-y="true">
       <switch-bar title="search.title" static></switch-bar>
       <div class="searchbtn" @click="OpenInput">

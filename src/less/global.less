@@ -18,24 +18,45 @@
     width: @screenWidth;
     height: @screenHeight;
 
-    animation-name: openpage-scroll;
-    animation-timing-function: ease;
-    animation-duration: 500ms;
+    animation-name: page-card-slide;
+    animation-timing-function: ease-out;
+    animation-duration: 340ms;
     animation-direction: reverse;
 }
 
+// 全屏背景图与scroll共用scrclass，让整页（背景+内容）一起做卡片动画
+.page-bg-anim {
+    animation-name: page-card-slide;
+    animation-timing-function: ease-out;
+    animation-duration: 340ms;
+    animation-direction: reverse;
+}
+
+// 必须放在.scroll之后：前进时给被盖住的上一页叠加，覆盖.scroll的进入动画
+.scroll-backdrop {
+    animation-name: page-card-backdrop;
+    animation-timing-function: ease-out;
+    animation-duration: 340ms;
+    animation-direction: reverse;
+}
+
+// 动画结束后清场用：保留.scroll的布局，但不重新触发进入动画
+.scroll-noanim {
+    animation-name: none;
+}
+
 .scroll-backanim {
-    animation-name: backpage-scroll;
-    animation-timing-function: ease;
-    animation-duration: 500ms;
+    animation-name: page-card-slide;
+    animation-timing-function: ease-in;
+    animation-duration: 300ms;
     animation-direction: normal;
 }
 
 .scroll-frombackanim {
-    animation-name: fromback-scroll;
-    animation-timing-function: ease;
-    animation-duration: 500ms;
-    animation-direction: reverse;
+    animation-name: page-card-backdrop;
+    animation-timing-function: ease-out;
+    animation-duration: 300ms;
+    animation-direction: normal;
 }
 
 text {
