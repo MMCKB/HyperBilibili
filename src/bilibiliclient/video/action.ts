@@ -7,10 +7,10 @@ export const BilibiliClientVideoActionMethods = {
         return response.data;
     },
 
-    // 投币视频
-    async CoinVideo(this: any, bvid: string, multiply: number): Promise<any> {
+    // 投币视频，multiply 为 1 或 2，selectLike=1 时同时点赞
+    async CoinVideo(this: any, bvid: string, multiply: number, selectLike: number = 0): Promise<any> {
         const url = "https://api.bilibili.com/x/web-interface/coin/add";
-        const body = `bvid=${bvid}&multiply=${multiply}&csrf=${this.biliJct}`;
+        const body = `bvid=${bvid}&multiply=${multiply}&select_like=${selectLike ? 1 : 0}&csrf=${this.biliJct}`;
         const response = await this.postRequest(url, body, "application/x-www-form-urlencoded");
         return response.data;
     },

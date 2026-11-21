@@ -5,7 +5,7 @@
 
 <template>
   <div class="page">
-    <image class="page-bg-anim {{scrclass}}" style="position: absolute; left: 0px" src="{{getBgImg}}"></image>
+    <image style="position: absolute; left: 0px" src="{{getBgImg}}"></image>
     <scroll scroll-y="true" class="scroll {{scrclass}}" bounces="true">
       <!-- 搜索结果页面标题，仅当 overview_mode 为 false 时展示 -->
       <switch-bar title="searchresult.title" if="{{!overview_mode}}" static></switch-bar>

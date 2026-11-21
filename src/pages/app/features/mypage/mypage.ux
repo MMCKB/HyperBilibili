@@ -16,7 +16,7 @@
         <text class="btntext">{{ $t("mypage.history") }}</text>
         <image src="/common/arrow_right.png"></image>
       </div>
-      <div class="btnbase" style="margin-top: 10px" @click="WIPTips()">
+      <div class="btnbase" style="margin-top: 10px" @click="GoWatchLater()">
         <image class="btnimg" src="/common/mypage_watchlater.png"></image>
         <text class="btntext">{{ $t("mypage.showLater") }}</text>
         <image src="/common/arrow_right.png"></image>
@@ -33,7 +33,6 @@
 
 <script>
 import router from "@system.router"
-import prompt from "@system.prompt"
 export default {
   private: {
     accountInfo: {},
@@ -42,6 +41,11 @@ export default {
   GoHistory(){
     router.push({
       uri: "pages/folders/history"
+    })
+  },
+  GoWatchLater(){
+    router.push({
+      uri: "pages/folders/watchlater"
     })
   },
   GoMyFavFolders(){
@@ -55,11 +59,6 @@ export default {
   GoMessages(){
     router.push({
       uri: "pages/message/messages"
-    })
-  },
-  WIPTips() {
-    prompt.showToast({
-      message: "该功能还在开发中"
     })
   },
   onInit() {

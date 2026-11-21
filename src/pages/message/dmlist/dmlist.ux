@@ -3,7 +3,7 @@
 <template>
   <div class="page">
     <scroll scroll-y="true" class="scroll {{scrclass}}" bounces="true">
-      <title-bar title="dmlist.title" static></title-bar>
+      <title-bar title="{{ shareBvid ? '分享给好友' : 'dmlist.title' }}"></title-bar>
       
       <image style="position: absolute; margin-top: 245px" if="{{anims.show_loading}}" src="{{anims.loading_src.value}}">
       </image>
@@ -40,17 +40,24 @@ import router from "@system.router"
 import prompt from "@system.prompt"
 
 export default {
+  public: {
+    shareBvid: "",
+    shareTitle: "",
+    shareMessage: ""
+  },
   private: {
     sessions: [],
     session_cards: {},
     show_dmlist: false,
     Show20UserLimit: false,
+    sharing: false,
     anims: {
       show_loading: false
     },
     scrclass: ""
   },
   async LongPressHandle(id) {
+    if (this.shareBvid) return
     if (global.settings.SETTINGS.pinnedDMUsers.includes(id)) {
       const saved = await global.settings.saveSettings({
         pinnedDMUsers: global.settings.SETTINGS.pinnedDMUsers.filter((item) => item !== id)
@@ -113,6 +120,10 @@ export default {
     }
   },
   GoDMPage(targetId) {
+    if (this.shareBvid) {
+      this.ShareToFriend(targetId)
+      return
+    }
     router.push({
       uri: "pages/message/dmpage",
       params: {
@@ -122,6 +133,35 @@ export default {
         targetPic: this.session_cards[`${targetId}`].face
       }
     })
+  },
+  async ShareToFriend(targetId) {
+    if (this.sharing || !this.shareBvid || !targetId) return
+    this.sharing = true
+    const card = this.session_cards[`${targetId}`] || {}
+    const message = String(this.shareMessage || "").trim()
+    const videoUrl = `https://www.bilibili.com/video/${this.shareBvid}`
+    const text = `${message ? message + "\n" : ""}分享视频：${this.shareTitle || this.shareBvid}\n${videoUrl}`
+    try {
+      const result = await global.biliclient.SendDMSessionMessage(targetId, 1, text)
+      if (result && result.code === 0) {
+        prompt.showToast({message: `已分享给 ${card.name || "好友"}`})
+        setTimeout(() => {
+          router.back()
+        }, 500)
+      } else {
+        prompt.showToast({
+          message: result
+            ? `分享失败，错误代码：${result.code} 原因：${result.message}`
+            : "分享失败，请重试",
+          duration: 3000
+        })
+      }
+    } catch (e) {
+      global.logger.error("分享给好友失败: ", e)
+      prompt.showToast({message: "分享失败，请重试", duration: 3000})
+    } finally {
+      this.sharing = false
+    }
   },
   onInit() {
     global.animengine.defaults.loading.CreateLoadingAnimation(this)

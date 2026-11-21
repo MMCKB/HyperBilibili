@@ -2,7 +2,7 @@
 
 <template>
     <div class="inputpanel">
-        <input-method if="{{global_show}}" style="position: absolute" hide={{keyboardHide}} @complete="InputEvent" @delete="InputDelete" screentype="{{screentype}}" vibratemode="short"></input-method>
+        <input-method if="{{global_show}}" style="position: absolute" hide={{keyboardHide}} @complete="InputEvent" @delete="InputDelete" screentype="{{screentype}}" maxlength="{{keyboardMaxlength}}" vibratemode="short"></input-method>
         <div class="inputactions">
             <div style="margin-left: 35px" @click="ExitInput">
                 <image class="inputaction_img" src="/common/textinput_back.png"></image>
@@ -22,18 +22,31 @@ export default {
     props: {
         keyboardHide: {
             default: false
+        },
+        initialValue: {
+            default: ""
+        },
+        maxlength: {
+            default: 0
         }
     },
     data: {
         global_show: false,
         input_text: "",
-        screentype: ""
+        screentype: "",
+        keyboardMaxlength: 5
     },
     InputEvent(evt){
-        this.input_text += evt.detail.content
+        this.input_text = this.LimitText(this.input_text + evt.detail.content)
+    },
+    LimitText(text){
+        const limit = Number(this.maxlength)
+        return limit > 0 ? Array.from(String(text)).slice(0, limit).join("") : String(text)
     },
     InputDelete(){
-        this.input_text = this.input_text.slice(0, -1)
+        const chars = Array.from(this.input_text)
+        chars.pop()
+        this.input_text = chars.join("")
     },
     ExitInput(){
         this.$emit("exit")
@@ -48,7 +61,9 @@ export default {
         this.global_show = true
     },
     onInit(){
+        this.input_text = this.LimitText(this.initialValue)
         this.InitScreenType()
+        this.keyboardMaxlength = 5
     }
 }
 </script>

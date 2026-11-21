@@ -82,11 +82,22 @@ export default {
       return
     }
 
-    // 设置没读出来时 SETTINGS 只是默认值，不能据此判定用户未同意协议。
-    // 本地已有账号说明此前完成过“同意协议→登录”的流程，不能因为一次读取失败把用户送回协议页。
-    // 注意：只在“读取失败”时兜底；明确读到 false 时仍然展示协议页。
-    if (!settingsReadable && (await this.$app.$def.jumpcheck.HasStoredAccount())) {
-      global.logger.warn("[splash] settings load failed but stored account exists, skip eula page")
+    // 本地已有账号，说明此前已经完成过“同意协议 → 登录”的流程。
+    // 设置可能因为升级、存储异常或写入竞争丢失/变回 false，不能因此把已登录用户送回协议页。
+    if (await this.$app.$def.jumpcheck.HasStoredAccount()) {
+      global.logger.warn(
+        "[splash] stored account exists but agreement flag is false/readable=",
+        settingsReadable,
+        ", skip eula page"
+      )
+      // 设置确实读出来了时，顺手把协议标记补回去；读失败时不要写回，避免覆盖其它设置。
+      if (settingsReadable) {
+        global.settings.saveSettings({
+          agreedAllAgreements: true
+        }).catch((e) => {
+          global.logger.error("[splash] repair agreement flag failed:", e)
+        })
+      }
       this.$app.$def.jumpcheck.Jump()
       return
     }

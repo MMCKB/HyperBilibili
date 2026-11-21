@@ -1,4 +1,12 @@
 export const BilibiliClientFavFolderMethods = {
+    // 新建收藏夹。返回 B 站接口的完整响应，由页面判断 code 和错误提示。
+    async createFavouriteFolder(this: any, title: string, intro: string = "", isPublic: boolean = true): Promise<any> {
+        const url = "https://api.bilibili.com/x/v3/fav/folder/add";
+        const body = `title=${encodeURIComponent(title)}&intro=${encodeURIComponent(intro)}&privacy=${isPublic ? 0 : 1}&cover=&csrf=${encodeURIComponent(this.biliJct)}`;
+        const response = await this.postRequest(url, body, "application/x-www-form-urlencoded");
+        return response && response.data;
+    },
+
     // 获取用户创建的所有收藏夹信息
     async getUserFavouriteFolders(this: any, mid: string, type: number = 0, rid: string = null): Promise<any> {
         let url = `https://api.bilibili.com/x/v3/fav/folder/created/list-all?up_mid=${mid}&type=${type}`;

@@ -1,0 +1,239 @@
+<import name="title-bar" src="@components/TitleBar/TitleBar.ux"></import>
+<import name="floating-page-changer" src="@components/FloatingPageChanger/FloatingPageChanger.ux"></import>
+
+<template>
+  <div class="page">
+    <scroll scroll-y="true" class="scroll {{scrclass}}" bounces="true">
+      <title-bar title="稍后再看"></title-bar>
+      <image style="position: absolute; margin-top: 245px" if="{{anims.show_loading}}"
+        src="{{anims.loading_src.value}}"></image>
+      <div class="later-list" if="{{loaded}}">
+        <text class="later-empty" if="{{items.length === 0}}">稍后再看是空的</text>
+        <div class="later-row" for="{{items}}">
+          <div class="later-card" @click="OpenVideo($item.bvid)">
+            <image class="later-cover" src="{{$item.pic}}" alt="/common/fullblack.png"></image>
+            <div class="later-copy">
+              <text class="later-title">{{$item.title}}</text>
+              <text class="later-meta">{{$item.metaText}}</text>
+            </div>
+          </div>
+          <div class="later-remove" @click="RemoveItem($item)">
+            <image class="later-remove-icon" src="/common/later_remove.png"></image>
+          </div>
+        </div>
+      </div>
+      <text class="bottom-space"></text>
+    </scroll>
+    <floating-page-changer if="{{maxpn > 1}}" style="position: absolute" current_pn="{{current_pn}}"
+      @backpn="BackPN" @nextpn="NextPN"></floating-page-changer>
+  </div>
+</template>
+
+<script>
+import router from "@system.router"
+import prompt from "@system.prompt"
+
+export default {
+  private: {
+    items: [],
+    loaded: false,
+    current_pn: 1,
+    maxpn: 1,
+    totalCount: 0,
+    removing: false,
+    hasShown: false,
+    anims: {
+      show_loading: false
+    },
+    scrclass: ""
+  },
+  async LoadPage(pn) {
+    this.anims.show_loading = true
+    this.anims.loading.start()
+    try {
+      const data = await global.biliclient.getWatchLaterList(pn, 5)
+      const list = (data && data.list) || []
+      this.totalCount = (data && data.count) || 0
+      this.items = list
+        .filter(function(item) { return !!item.bvid })
+        .map((item) => {
+          let pic = item.pic || ""
+          if (pic.indexOf("http:") === 0) pic = "https:" + pic.slice(5)
+          if (pic && pic.indexOf("@") < 0) pic += "@160w_90h"
+          const duration = this.FormatDuration(item.duration)
+          const owner = item.owner && item.owner.name ? item.owner.name : ""
+          let meta = owner
+          if (duration) meta += (meta ? " · " : "") + duration
+          return Object.assign({}, item, {
+            pic,
+            durationText: duration,
+            metaText: meta
+          })
+        })
+      this.current_pn = pn
+      this.maxpn = Math.max(1, Math.ceil(this.totalCount / 5))
+    } catch (e) {
+      global.logger.error("加载稍后再看失败: ", e)
+      prompt.showToast({message: "加载稍后再看失败，请重试"})
+      this.items = []
+    } finally {
+      this.loaded = true
+      this.anims.show_loading = false
+      this.anims.loading.stop()
+    }
+  },
+  FormatDuration(seconds) {
+    const total = Number(seconds) || 0
+    if (total <= 0) return ""
+    const m = Math.floor(total / 60)
+    const s = total % 60
+    return m + ":" + (s < 10 ? "0" : "") + s
+  },
+  OpenVideo(bvid) {
+    if (!bvid) return
+    router.push({
+      uri: "pages/video/videodetail",
+      params: {bvid}
+    })
+  },
+  async RemoveItem(item) {
+    if (this.removing || !item || !item.aid) return
+    this.removing = true
+    try {
+      const result = await global.biliclient.removeWatchLater([item.aid])
+      if (!result || result.code !== 0) {
+        prompt.showToast({
+          message: result
+            ? `移除失败，错误代码：${result.code} 原因：${result.message}`
+            : "移除失败，请重试",
+          duration: 3000
+        })
+        return
+      }
+      this.items = this.items.filter(function(it) { return it.aid !== item.aid })
+      this.totalCount = Math.max(0, this.totalCount - 1)
+      this.maxpn = Math.max(1, Math.ceil(this.totalCount / 5))
+      prompt.showToast({message: "已移除"})
+      if (this.items.length === 0 && this.current_pn > 1) {
+        this.LoadPage(this.current_pn - 1)
+      }
+    } catch (e) {
+      global.logger.error("移除稍后再看失败: ", e)
+      prompt.showToast({message: "移除失败，请重试", duration: 3000})
+    } finally {
+      this.removing = false
+    }
+  },
+  BackPN() {
+    if (this.current_pn > 1) this.LoadPage(this.current_pn - 1)
+  },
+  NextPN() {
+    if (this.current_pn < this.maxpn) this.LoadPage(this.current_pn + 1)
+  },
+  onInit() {
+    global.animengine.defaults.loading.CreateLoadingAnimation(this)
+    this.LoadPage(1)
+  },
+  onShow() {
+    if (this.hasShown) {
+      this.LoadPage(this.current_pn)
+    } else {
+      this.hasShown = true
+    }
+  },
+  onDestroy() {
+    global.animengine.clearPageAnims("watchLaterPage")
+  }
+}
+</script>
+
+<style lang="less">
+@import "@less/global.less";
+
+.later-list {
+  width: 370px;
+  flex-direction: column;
+  align-items: center;
+}
+
+.later-empty {
+  margin-top: 60px;
+  color: #9e9e9e;
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.later-row {
+  width: 100%;
+  margin-top: 10px;
+  flex-direction: row;
+  align-items: center;
+}
+
+.later-card {
+  width: 306px;
+  height: 96px;
+  padding-left: 12px;
+  padding-right: 12px;
+  border-radius: 24px;
+  background-color: #262626;
+  flex-direction: row;
+  align-items: center;
+}
+
+.later-cover {
+  width: 112px;
+  height: 63px;
+  border-radius: 16px;
+  object-fit: cover;
+  background-color: #1b1b20;
+}
+
+.later-copy {
+  flex: 1;
+  margin-left: 12px;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.later-title {
+  width: 100%;
+  color: #ffffff;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 26px;
+  lines: 2;
+  text-overflow: ellipsis;
+}
+
+.later-meta {
+  width: 100%;
+  margin-top: 4px;
+  color: #9e9e9e;
+  font-size: 16px;
+  font-weight: 500;
+  lines: 1;
+  text-overflow: ellipsis;
+}
+
+.later-remove {
+  width: 56px;
+  height: 48px;
+  margin-left: 8px;
+  border-radius: 24px;
+  background-color: #34343b;
+  justify-content: center;
+  align-items: center;
+}
+
+.later-remove-icon {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+}
+
+.bottom-space {
+  height: 110px;
+  width: 100%;
+}
+</style>

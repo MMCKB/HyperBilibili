@@ -22,17 +22,19 @@
 <script>
 import router from "@system.router"
 export default {
-  props: ["title"],
+  props: ["title", "backDisabled"],
   data: {
     barRowStyle: {},
     useRowLayout: false
   },
   RouterBack() {
+    if (this.backDisabled) return
     global.ui.OnBackPressTriggered()
   },
   onInit() {
     global.ui.InitPage(this._parentVM)
     this._parentVM.$options.onBackPress = () => {
+      if (this.backDisabled) return true
       global.ui.OnBackPressTriggered()
       return true
     }

@@ -80,6 +80,9 @@
             "pages/video/player": {
                 "component": "player"
             },
+            "pages/video/phonewatch": {
+                "component": "phonewatch"
+            },
             "pages/app/arealist": {
                 "component": "arealist"
             },
@@ -94,6 +97,9 @@
             },
             "pages/folders/favfolders": {
                 "component": "favfolders"
+            },
+            "pages/folders/createfolder": {
+                "component": "createfolder"
             },
             "pages/folders/favfolders/foldervideos": {
                 "component": "foldervideos"
@@ -118,6 +124,9 @@
             },
             "pages/folders/history": {
                 "component": "history"
+            },
+            "pages/folders/watchlater": {
+                "component": "watchlater"
             },
             "pages/search/searchresult": {
                 "component": "searchresult"

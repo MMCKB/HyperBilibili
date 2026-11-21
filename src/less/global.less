@@ -11,6 +11,7 @@
     height: @screenHeight;
 }
 
+// 所有页面统一的卡片式入场
 .scroll {
     display: flex;
     flex-direction: column;
@@ -18,44 +19,33 @@
     width: @screenWidth;
     height: @screenHeight;
 
-    animation-name: page-card-slide;
-    animation-timing-function: ease-out;
-    animation-duration: 340ms;
+    animation-name: openpage-scroll;
+    animation-timing-function: ease;
+    animation-duration: 500ms;
     animation-direction: reverse;
 }
 
-// 全屏背景图与scroll共用scrclass，让整页（背景+内容）一起做卡片动画
-.page-bg-anim {
-    animation-name: page-card-slide;
-    animation-timing-function: ease-out;
-    animation-duration: 340ms;
+// 纯动画类：供无 scroll 结构的页面根容器复用卡片入场动画
+// （不携带任何布局属性，避免破坏页面自身结构；
+//   定义在退场/回归类之前，同用时由后者覆盖动画属性）
+.card-enter {
+    animation-name: openpage-scroll;
+    animation-timing-function: ease;
+    animation-duration: 500ms;
     animation-direction: reverse;
-}
-
-// 必须放在.scroll之后：前进时给被盖住的上一页叠加，覆盖.scroll的进入动画
-.scroll-backdrop {
-    animation-name: page-card-backdrop;
-    animation-timing-function: ease-out;
-    animation-duration: 340ms;
-    animation-direction: reverse;
-}
-
-// 动画结束后清场用：保留.scroll的布局，但不重新触发进入动画
-.scroll-noanim {
-    animation-name: none;
 }
 
 .scroll-backanim {
-    animation-name: page-card-slide;
-    animation-timing-function: ease-in;
-    animation-duration: 300ms;
+    animation-name: backpage-scroll;
+    animation-timing-function: ease;
+    animation-duration: 500ms;
     animation-direction: normal;
 }
 
 .scroll-frombackanim {
-    animation-name: page-card-backdrop;
-    animation-timing-function: ease-out;
-    animation-duration: 300ms;
+    animation-name: fromback-scroll;
+    animation-timing-function: ease;
+    animation-duration: 500ms;
     animation-direction: normal;
 }
 

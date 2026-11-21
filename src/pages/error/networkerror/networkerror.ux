@@ -15,6 +15,9 @@
 <script>
 import router from "@system.router"
 export default {
+  onInit(){
+    global.ui.InitPage(this)
+  },
   Retry(){
     router.clear()
     router.replace({

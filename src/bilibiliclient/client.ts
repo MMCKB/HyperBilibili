@@ -6,6 +6,7 @@ import { BilibiliClientVideoActionMethods } from './video/action';
 import { BilibiliClientArticleMethods } from './article/article';
 import { BilibiliClientFavFolderMethods } from './folder/favfolder';
 import { BilibiliClientHistoryMethods } from './folder/history';
+import { BilibiliClientWatchLaterMethods } from './folder/watchlater';
 import { BilibiliClientUserMethods } from './user/user';
 import { BilibiliClientCommentMethods } from './comment/comment';
 import { BilibiliClientMessageMethods } from './message/message';
@@ -62,6 +63,7 @@ Object.assign(BilibiliClient.prototype,
     BilibiliClientArticleMethods,
     BilibiliClientFavFolderMethods,
     BilibiliClientHistoryMethods,
+    BilibiliClientWatchLaterMethods,
     BilibiliClientUserMethods,
     BilibiliClientCommentMethods,
     BilibiliClientMessageMethods,

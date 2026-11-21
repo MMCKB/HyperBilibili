@@ -44,9 +44,18 @@
           <image class="vidtoolimg" src="/common/vidtool_aisummary.png"></image>
           <text class="vidtooltext">{{ $t("video.aisummary") }}</text>
         </div>
-        <div class="vidtool" @click="WIPTips">
-          <image class="vidtoolimg" src="/common/vidtool_watchlater.png"></image>
-          <text class="vidtooltext">{{ $t("video.showLater") }}</text>
+        <div class="vidtool" @click="OpenPhoneWatch()">
+          <image class="vidtoolimg" src="/common/vidtool_watchonphone.png"></image>
+          <text class="vidtooltext">手机看</text>
+        </div>
+        <div class="vidtool" @click="OpenSharePicker()">
+          <image class="vidtoolimg" src="/common/vidtool_share.png"></image>
+          <text class="vidtooltext">分享</text>
+        </div>
+        <div class="vidtool" @click="ToggleWatchLater()">
+          <image class="vidtoolimg"
+            src="{{ watchLaterAdded ? '/common/vidtool_watchlatered.png' : '/common/vidtool_watchlater.png' }}"></image>
+          <text class="vidtooltext">{{ watchLaterPending ? "处理中" : (watchLaterAdded ? "已加入" : $t("video.showLater")) }}</text>
         </div>
       </scroll>
       <default-button text="video.sendReply" margin-top="20px" @click="Reply"></default-button>
@@ -54,10 +63,15 @@
     </scroll>
     <full-screen-input style="position: absolute" if="{{replymode}}" @send="SendReply"
       @exit="ExitInput"></full-screen-input>
-    <div class="fav-folder-overlay" if="{{favFolderPickerVisible}}">
-      <div class="fav-folder-picker">
-        <text class="fav-folder-picker-title">选择收藏夹</text>
-        <scroll scroll-y="true" class="fav-folder-list">
+    <div class="fav-folder-overlay {{ favOverlayClosing ? 'modal-closing' : 'modal-entering' }}" if="{{favOverlayMounted}}">
+      <div class="fav-folder-picker {{ favOverlayClosing ? '' : 'modal-panel-entering' }}">
+        <div class="fav-folder-header">
+          <text class="fav-folder-picker-title">选择收藏夹</text>
+          <div class="fav-folder-new" @click="OpenCreateFavFolder">
+            <text class="fav-folder-new-text">+ 新建</text>
+          </div>
+        </div>
+        <scroll scroll-y="true" class="fav-folder-list" id="favFolderList">
           <div class="fav-folder-item {{folder.selected ? 'fav-folder-item-selected' : ''}}"
             for="folder in favFolders" @click="ToggleFolder(folder.id)">
             <text class="fav-folder-checkmark">{{folder.selected ? '✓' : '○'}}</text>
@@ -65,11 +79,76 @@
           </div>
         </scroll>
         <div class="fav-folder-buttons">
-          <default-button text="取消" @click="HideFavFolderPicker"></default-button>
-          <default-button text="确认" @click="ConfirmAddToFav"></default-button>
+          <div class="fav-folder-button" @click="HideFavFolderPicker">
+            <text class="fav-folder-button-text">取消</text>
+          </div>
+          <div class="fav-folder-button fav-folder-button-primary {{ favRequestPending ? 'fav-folder-button-pending' : '' }}"
+            @click="ConfirmAddToFav">
+            <text class="fav-folder-button-text fav-folder-button-primary-text">{{ favRequestPending ? "收藏中…" : "确认" }}</text>
+          </div>
         </div>
       </div>
     </div>
+    <div class="coin-overlay {{ coinOverlayClosing ? 'modal-closing' : 'modal-entering' }}" if="{{coinOverlayMounted}}">
+      <div class="coin-picker {{ coinOverlayClosing ? '' : 'modal-panel-entering' }}">
+        <div class="coin-header">
+          <text class="coin-title">投币</text>
+          <text class="coin-status" if="{{coinNum > 0}}">已投 {{coinNum}} 枚</text>
+        </div>
+        <div class="coin-options">
+          <div class="coin-option {{ coinSelected === 1 ? 'coin-option-selected' : '' }} {{ coinNum >= 2 ? 'coin-option-disabled' : '' }}"
+            @click="SelectCoin(1)">
+            <div class="coin-art-row">
+              <image class="coin-art" src="/common/vidtool_coin.png"></image>
+            </div>
+          </div>
+          <div class="coin-option {{ coinSelected === 2 ? 'coin-option-selected' : '' }} {{ coinNum >= 1 ? 'coin-option-disabled' : '' }}"
+            @click="SelectCoin(2)">
+            <div class="coin-art-row">
+              <image class="coin-art" src="/common/vidtool_coin.png"></image>
+              <image class="coin-art coin-art-gap" src="/common/vidtool_coin.png"></image>
+            </div>
+          </div>
+        </div>
+        <div class="coin-like-row" @click="ToggleCoinLike">
+          <text class="coin-like-label">同时点赞</text>
+          <text class="coin-like-value">{{ liked ? "已点赞" : (coinWithLike ? "✓" : "○") }}</text>
+        </div>
+        <div class="coin-buttons">
+          <div class="coin-button" @click="HideCoinPicker">
+            <text class="coin-button-text">取消</text>
+          </div>
+          <div class="coin-button coin-button-primary {{ coinRequestPending ? 'coin-button-pending' : '' }}"
+            @click="ConfirmCoin">
+            <text class="coin-button-text coin-button-primary-text">{{ coinRequestPending ? "投币中…" : "投币" }}</text>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="share-overlay {{ shareOverlayClosing ? 'modal-closing' : 'modal-entering' }}" if="{{shareOverlayMounted}}">
+      <div class="share-picker {{ shareOverlayClosing ? '' : 'modal-panel-entering' }}">
+        <div class="share-header">
+          <text class="share-title">分享</text>
+        </div>
+        <div class="share-message" @click="OpenShareMessageInput">
+          <text class="share-message-text {{ shareMessage ? '' : 'share-message-placeholder' }}">{{ shareMessage || "写句留言，可不填" }}</text>
+        </div>
+        <div class="share-option" @click="ShareToFriends">
+          <text class="share-option-title">分享给好友</text>
+        </div>
+        <div class="share-option" @click="ShareToDynamic">
+          <text class="share-option-title">{{ sharePosting ? "发布中…" : "分享到动态" }}</text>
+        </div>
+        <div class="share-buttons">
+          <div class="share-cancel" @click="HideSharePicker">
+            <text class="share-cancel-text">取消</text>
+          </div>
+        </div>
+      </div>
+    </div>
+    <full-screen-input style="position: absolute; z-index: 50" if="{{shareInputMode}}"
+      initial-value="{{ shareMessage }}" maxlength="100" @send="FinishShareMessageInput"
+      @exit="ExitShareMessageInput"></full-screen-input>
   </div>
 </template>
 
@@ -95,7 +174,30 @@ export default {
     renderingCover: false,
     scrclass: "",
     favFolderPickerVisible: false,
-    favFolders: []
+    favOverlayMounted: false,
+    favOverlayClosing: false,
+    favAnimTimer: 0,
+    favFolders: [],
+    favRequestPending: false,
+    coinNum: 0,
+    coinPickerVisible: false,
+    coinOverlayMounted: false,
+    coinOverlayClosing: false,
+    coinAnimTimer: 0,
+    coinSelected: 1,
+    coinWithLike: false,
+    coinRequestPending: false,
+    watchLaterAdded: false,
+    watchLaterPending: false,
+    watchLaterStateLoaded: false,
+    watchLaterStateToken: 0,
+    sharePickerVisible: false,
+    shareOverlayMounted: false,
+    shareOverlayClosing: false,
+    shareAnimTimer: 0,
+    sharePosting: false,
+    shareMessage: "",
+    shareInputMode: false
   },
   computed: {
     stat_view() {
@@ -116,10 +218,130 @@ export default {
     this.GetVideoDetail()
     this.UpdateVideoToolbarStatus()
   },
-  WIPTips() {
-    prompt.showToast({
-      message: "该功能仍在开发中"
+  onShow() {
+    this.ConsumeCreatedFavFolder()
+    this.LoadWatchLaterState()
+  },
+  ConsumeCreatedFavFolder() {
+    const result = global.createdFavFolderResult
+    if (!result || result.bvid !== this.bvid) return
+    global.createdFavFolderResult = null
+
+    const folder = result.folder
+    if (!folder || !folder.id) return
+    const existing = this.favFolders.filter(function(f) { return f.id !== folder.id })
+    const newFolder = {
+      id: folder.id,
+      title: folder.title,
+      selected: true
+    }
+    if (existing.length > 0) {
+      existing.splice(1, 0, newFolder)
+      this.favFolders = existing
+    } else {
+      this.favFolders = [newFolder]
+    }
+    this.ShowFavFolderOverlay()
+    this.ScrollToCreatedFolder()
+    prompt.showToast({message: "创建成功"})
+  },
+  ShowFavFolderOverlay() {
+    clearTimeout(this.favAnimTimer)
+    this.favFolderPickerVisible = true
+    if (this.favOverlayMounted && !this.favOverlayClosing) return
+    this.favOverlayClosing = false
+    this.favOverlayMounted = true
+  },
+  CloseFavFolderOverlay() {
+    clearTimeout(this.favAnimTimer)
+    this.favFolderPickerVisible = false
+    if (!this.favOverlayMounted) return
+    this.favOverlayClosing = true
+    this.favAnimTimer = setTimeout(() => {
+      this.favOverlayMounted = false
+      this.favOverlayClosing = false
+    }, 180)
+  },
+  ScrollToCreatedFolder() {
+    setTimeout(() => {
+      try {
+        const list = this.$element("favFolderList")
+        if (list) list.scrollTo({top: 0, behavior: "smooth"})
+      } catch (e) {}
+    }, 200)
+  },
+  OpenCreateFavFolder() {
+    if (this.favRequestPending || !this.favFolderPickerVisible) return
+    global.createdFavFolderResult = null
+    router.push({
+      uri: "pages/folders/createfolder",
+      params: {bvid: this.bvid}
     })
+  },
+  async LoadWatchLaterState() {
+    const token = ++this.watchLaterStateToken
+    this.watchLaterStateLoaded = false
+    try {
+      const data = await global.biliclient.getWatchLaterList(1, 100)
+      if (token !== this.watchLaterStateToken) return
+      const list = (data && data.list) || []
+      this.watchLaterAdded = list.some((item) => item.bvid === this.bvid)
+    } catch (e) {
+      if (token !== this.watchLaterStateToken) return
+      global.logger.error("获取稍后再看状态失败: ", e)
+      this.watchLaterAdded = false
+    } finally {
+      if (token === this.watchLaterStateToken) {
+        this.watchLaterStateLoaded = true
+      }
+    }
+  },
+  async ToggleWatchLater() {
+    if (this.watchLaterPending) return
+    if (!this.vid || !this.vid.aid) {
+      prompt.showToast({message: "视频还没加载好，请稍后再试"})
+      return
+    }
+    this.watchLaterPending = true
+    try {
+      if (!this.watchLaterStateLoaded) {
+        await this.LoadWatchLaterState()
+      }
+      if (this.watchLaterAdded) {
+        const result = await global.biliclient.removeWatchLater([this.vid.aid])
+        if (result && result.code === 0) {
+          this.watchLaterStateToken++
+          this.watchLaterAdded = false
+          prompt.showToast({message: "已移出稍后再看"})
+        } else {
+          prompt.showToast({
+            message: result
+              ? `移除失败，错误代码：${result.code} 原因：${result.message}`
+              : "移除失败，请重试",
+            duration: 3000
+          })
+        }
+      } else {
+        const result = await global.biliclient.addWatchLater(this.bvid)
+        if (result && result.code === 0) {
+          this.watchLaterStateToken++
+          this.watchLaterAdded = true
+          prompt.showToast({message: "已加入稍后再看"})
+        } else {
+          prompt.showToast({
+            message: result
+              ? `加入失败，错误代码：${result.code} 原因：${result.message}`
+              : "加入失败，请重试",
+            duration: 3000
+          })
+        }
+      }
+    } catch (e) {
+      global.logger.error("稍后再看操作失败: ", e)
+      prompt.showToast({message: "操作失败，请重试", duration: 3000})
+    } finally {
+      this.watchLaterPending = false
+    }
   },
   async OpenPlayer() {
     const exists = await global.savedcontent.SavedContentManager.checkVideoAudioExists(this.bvid)
@@ -156,6 +378,93 @@ export default {
       }
     })
   },
+  OpenPhoneWatch() {
+    router.push({
+      uri: "pages/video/phonewatch",
+      params: {
+        bvid: this.bvid,
+        title: this.vid.title || ""
+      }
+    })
+  },
+  OpenSharePicker() {
+    clearTimeout(this.shareAnimTimer)
+    this.sharePickerVisible = true
+    this.sharePosting = false
+    this.shareMessage = ""
+    this.shareInputMode = false
+    this.shareOverlayMounted = true
+    this.shareOverlayClosing = false
+  },
+  OpenShareMessageInput() {
+    if (this.sharePosting) return
+    this.shareInputMode = true
+  },
+  FinishShareMessageInput(evt) {
+    this.shareInputMode = false
+    this.shareMessage = evt.detail.content
+  },
+  ExitShareMessageInput() {
+    this.shareInputMode = false
+  },
+  HideSharePicker() {
+    if (this.sharePosting) return
+    this.CloseShareOverlay()
+  },
+  CloseShareOverlay() {
+    clearTimeout(this.shareAnimTimer)
+    this.sharePickerVisible = false
+    if (!this.shareOverlayMounted) return
+    this.shareOverlayClosing = true
+    this.shareAnimTimer = setTimeout(() => {
+      this.shareOverlayMounted = false
+      this.shareOverlayClosing = false
+    }, 180)
+  },
+  ShareToFriends() {
+    if (this.sharePosting) return
+    clearTimeout(this.shareAnimTimer)
+    this.sharePickerVisible = false
+    this.shareOverlayMounted = false
+    this.shareOverlayClosing = false
+    router.push({
+      uri: "pages/message/dmlist",
+      params: {
+        shareBvid: this.bvid,
+        shareTitle: this.vid.title || "",
+        shareMessage: this.shareMessage.trim()
+      }
+    })
+  },
+  async ShareToDynamic() {
+    if (this.sharePosting) return
+    this.sharePosting = true
+    try {
+      const result = await global.biliclient.createShareDynamic(
+        this.bvid,
+        this.vid.title || "",
+        this.vid.aid,
+        this.shareMessage.trim()
+      )
+      if (result && result.code === 0) {
+        this.sharePosting = false
+        this.CloseShareOverlay()
+        prompt.showToast({message: "已分享到动态"})
+      } else {
+        this.sharePosting = false
+        prompt.showToast({
+          message: result
+            ? `分享失败，错误代码：${result.code} 原因：${result.message}`
+            : "分享失败，请重试",
+          duration: 3000
+        })
+      }
+    } catch (e) {
+      this.sharePosting = false
+      global.logger.error("分享到动态失败: ", e)
+      prompt.showToast({message: "分享失败，请重试", duration: 3000})
+    }
+  },
   async GetVideoDetail() {
     this.vid = await global.biliclient.getVideoInfoByBVID(this.bvid)
     this.renderingCover = true
@@ -163,7 +472,8 @@ export default {
   async UpdateVideoToolbarStatus() {
     this.stared = await global.biliclient.isVideoStaredByBVID(this.bvid)
     this.liked = await global.biliclient.isVideoLikedByBVID(this.bvid)
-    this.coined = await global.biliclient.isVideoCoinedByBVID(this.bvid)
+    this.coinNum = Number(await global.biliclient.isVideoCoinedByBVID(this.bvid)) || 0
+    this.coined = this.coinNum > 0
     this.UpdateToolBarIconSrc()
   },
   UpdateToolBarIconSrc() {
@@ -174,7 +484,7 @@ export default {
   async PowerIt() {
     prompt.showToast({message: "一键三连中！"})
     this.LikeClick()
-    this.CoinClick()
+    this.QuickCoin()
     this.AddToFav()
   },
   async LikeClick() {
@@ -187,15 +497,96 @@ export default {
     })
     this.UpdateVideoToolbarStatus()
   },
-  async CoinClick() {
-    var result = await global.biliclient.CoinVideo(this.vid.bvid, 1)
-    const message =
-      result.code === 0 ? "投币成功" : `投币失败，错误代码：${result.code} 原因：${result.message}`
-    prompt.showToast({
-      message,
-      duration: result.code === 0 ? 2000 : 4000
-    })
-    this.UpdateVideoToolbarStatus()
+  CoinClick() {
+    if (this.coinRequestPending) return
+    if (this.coinNum >= 2) {
+      prompt.showToast({message: "已经投过 2 枚硬币了"})
+      return
+    }
+    this.coinSelected = 1
+    this.coinWithLike = false
+    this.ShowCoinOverlay()
+  },
+  ShowCoinOverlay() {
+    clearTimeout(this.coinAnimTimer)
+    this.coinPickerVisible = true
+    if (this.coinOverlayMounted && !this.coinOverlayClosing) return
+    this.coinOverlayClosing = false
+    this.coinOverlayMounted = true
+  },
+  CloseCoinOverlay() {
+    clearTimeout(this.coinAnimTimer)
+    this.coinPickerVisible = false
+    if (!this.coinOverlayMounted) return
+    this.coinOverlayClosing = true
+    this.coinAnimTimer = setTimeout(() => {
+      this.coinOverlayMounted = false
+      this.coinOverlayClosing = false
+    }, 180)
+  },
+  QuickCoin() {
+    if (this.coinRequestPending) return
+    if (this.coinNum >= 2) return
+    this.PayCoin(1, false)
+  },
+  HideCoinPicker() {
+    if (this.coinRequestPending) return
+    this.CloseCoinOverlay()
+  },
+  SelectCoin(count) {
+    if (this.coinRequestPending) return
+    if (count === 2 && this.coinNum >= 1) return
+    if (count === 1 && this.coinNum >= 2) return
+    this.coinSelected = count
+  },
+  ToggleCoinLike() {
+    if (this.coinRequestPending || this.liked) return
+    this.coinWithLike = !this.coinWithLike
+  },
+  ConfirmCoin() {
+    if (this.coinRequestPending || !this.coinPickerVisible) return
+    this.PayCoin(this.coinSelected, this.coinWithLike)
+  },
+  async PayCoin(count, withLike) {
+    if (this.coinRequestPending) return
+    if (this.coinNum >= 2) return
+    if (count === 2 && this.coinNum >= 1) {
+      prompt.showToast({message: "已投过币，只能再补 1 枚"})
+      return
+    }
+    this.coinRequestPending = true
+    try {
+      const result = await global.biliclient.CoinVideo(this.bvid, count, withLike ? 1 : 0)
+      if (!result || result.code !== 0) {
+        prompt.showToast({
+          message: result
+            ? `投币失败，错误代码：${result.code} 原因：${result.message}`
+            : "投币失败，请重试",
+          duration: 4000
+        })
+        return
+      }
+      this.coinNum = Math.min(2, this.coinNum + count)
+      this.coined = this.coinNum > 0
+      if (withLike && result.data && result.data.like) this.liked = true
+      const currentStat = this.vid.stat || {}
+      this.vid = Object.assign({}, this.vid, {
+        stat: Object.assign({}, currentStat, {
+          coin: (Number(currentStat.coin) || 0) + count
+        })
+      })
+      this.UpdateToolBarIconSrc()
+      if (this.coinOverlayMounted) this.CloseCoinOverlay()
+      prompt.showToast({
+        message: withLike && result.data && result.data.like ? "投币成功，已同时点赞" : "投币成功",
+        duration: 2000
+      })
+    } catch (e) {
+      global.logger.error("投币失败: ", e)
+      prompt.showToast({message: "投币失败，请重试", duration: 3000})
+    } finally {
+      this.coinRequestPending = false
+    }
   },
   async SendReply(evt) {
     this.replymode = false
@@ -261,16 +652,18 @@ export default {
           selected: folder.fav_state === 1
         }
       })
-      this.favFolderPickerVisible = true
+      this.ShowFavFolderOverlay()
     } catch (e) {
       global.logger.error("获取收藏夹列表失败: ", e)
       prompt.showToast({message: "获取收藏夹列表失败，请重试"})
     }
   },
   HideFavFolderPicker() {
-    this.favFolderPickerVisible = false
+    if (this.favRequestPending) return
+    this.CloseFavFolderOverlay()
   },
   ToggleFolder(folderId) {
+    if (this.favRequestPending || !this.favFolderPickerVisible) return
     this.favFolders = this.favFolders.map(function(f) {
       if (f.id === folderId) {
         return Object.assign({}, f, { selected: !f.selected })
@@ -279,18 +672,27 @@ export default {
     })
   },
   async ConfirmAddToFav() {
+    if (this.favRequestPending || !this.favFolderPickerVisible) return
     var selectedIds = this.favFolders
       .filter(function(f) { return f.selected })
       .map(function(f) { return f.id })
-    this.favFolderPickerVisible = false
     if (selectedIds.length === 0) {
       prompt.showToast({message: "未选择任何收藏夹"})
       return
     }
-    var result = await global.biliclient.starVideoToFavFolders(this.vid.aid, selectedIds)
-    var message = result === 0 ? "收藏成功" : "收藏失败，请重试，或重新登录后再试"
-    prompt.showToast({message: message})
-    this.UpdateVideoToolbarStatus()
+    this.favRequestPending = true
+    try {
+      var result = await global.biliclient.starVideoToFavFolders(this.vid.aid, selectedIds)
+      var message = result === 0 ? "收藏成功" : "收藏失败，请重试，或重新登录后再试"
+      prompt.showToast({message: message})
+      if (result === 0) this.CloseFavFolderOverlay()
+      this.UpdateVideoToolbarStatus()
+    } catch (e) {
+      global.logger.error("收藏失败: ", e)
+      prompt.showToast({message: "收藏失败，请重试"})
+    } finally {
+      this.favRequestPending = false
+    }
   },
   async ConfirmUnstarAll() {
     try {

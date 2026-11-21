@@ -11,7 +11,7 @@ class GlobalActions {
 
     static ClearCurrentVmSrcClass(){
         var vm = global.vmPool[global.currentPageName]
-        // 没有声明scrclass的页面（例如没有.scroll的文章页）不要凭空加属性
+        // 没有声明scrclass的页面（例如没有动画绑定的页面）不要凭空加属性
         if(vm && typeof vm.scrclass === "string"){
             vm.scrclass = ""
         }
@@ -43,49 +43,17 @@ export function Init(){
 }
 
 export function InitPage(vm){
-    var previousPageName = global.currentPageName
-    // 只有带scrclass动画的页面才需要联动旧页；没有.scroll绑定的页面直接跳过
-    var newPageHasCardEnter = typeof vm.scrclass === "string"
-
     GlobalActions.UpdateCurrentPageName()
     GlobalActions.AddToVmPool(vm)
     GlobalActions.ClearCurrentVmSrcClass()
-
-    // 桌面卡片式前进：新页推入时，上一页同时左移、缩小并压暗。
-    // 用页面栈校验前进方向：push时previousPageName紧挨在新页之前；
-    // replace时被替换的页面已经不在栈里，不会误伤更下面的页面。
-    var pageStack = router.getPages()
-    var prevIndex = -1
-    for(var i = 0; i < pageStack.length; i++){
-        if(pageStack[i].name === previousPageName){
-            prevIndex = i
-            break
-        }
-    }
-    var isForwardFromPrevious = previousPageName !== "" &&
-        previousPageName !== global.currentPageName &&
-        prevIndex >= 0 &&
-        prevIndex >= pageStack.length - 2
-
-    if(newPageHasCardEnter && isForwardFromPrevious){
-        var prevVm = global.vmPool[previousPageName]
-        // 上一页也必须声明了scrclass（即有.scroll绑定）才能做背景联动
-        if(prevVm && typeof prevVm.scrclass === "string"){
-            prevVm.scrclass = ""
-            prevVm.scrclass = "scroll-backdrop"
-            setTimeout(() => {
-                // 新页已经盖住上一页，清掉临时类，避免动画末态残留在背景页上
-                // 用scroll-noanim而不是空值：否则.scroll的进入动画会在背景页上重新播放一遍
-                if(prevVm.scrclass === "scroll-backdrop"){
-                    prevVm.scrclass = "scroll-noanim"
-                }
-            }, 380)
-            global.logger.log("[ui.InitPage] card backdrop applied. prev=", previousPageName)
-        }
-    }
-
     global.logger.log("[ui.InitPage] vm set successed. name=", global.currentPageName)
 }
+
+// 功能区（arealist）子页面：从功能区进入时是栈底页（router.clear + replace）
+// 直接 router.back() 会退出应用，改为返回功能区，lastpage 用于高亮对应按钮
+// 注意：搜索页不在此列——它由功能区 router.push 进入，栈底留着存活的功能区页，
+// 走下方通用返回路径即可，返回时功能区播放 frombackanim 复原动画
+const MENU_BACK_PAGES = ["dynamic", "savedcontent", "mypage", "settings"]
 
 export function OnBackPressTriggered(){
     // 退出动画期间屏蔽重复返回，避免连按导致一次退两层
@@ -102,31 +70,45 @@ export function OnBackPressTriggered(){
     var currentVm = global.vmPool[currentName]
     var prevVm = prevName !== "" ? global.vmPool[prevName] : null
     var currentHasAnim = currentVm && typeof currentVm.scrclass === "string"
+    var prevHasAnim = prevVm && prevVm !== currentVm && typeof prevVm.scrclass === "string"
 
     if(currentHasAnim){
         currentVm.scrclass = "scroll-backanim"
     }
-    if(currentHasAnim && prevVm && prevVm !== currentVm && typeof prevVm.scrclass === "string"){
-        // 与新页退出同时反向：上一页从压暗缩小的背景态回到原位
-        prevVm.scrclass = ""
-        prevVm.scrclass = "scroll-frombackanim"
-    }
 
-    // 与300ms退出动画同时结束；清类和router.back在同一tick，避免页面回弹
+    // 与远程仓库的返回时序一致：150ms 后清类并返回
     setTimeout(() => {
         if(currentHasAnim){
             currentVm.scrclass = ""
         }
+
+        // 栈底的功能区子页：回功能区而不是退出应用
+        var pageSeg = currentName.split("/").pop()
+        if(pageSeg && MENU_BACK_PAGES.indexOf(pageSeg) >= 0){
+            router.replace({
+                uri: "pages/app/arealist",
+                params: {
+                    lastpage: pageSeg
+                }
+            })
+            global.uiBackPending = false
+            return
+        }
+
         router.back()
 
-        // 以实际栈顶修正当前页名，供下一次前进联动使用（回退失败时也不会记错页）
-        var stackAfterBack = router.getPages()
-        global.currentPageName = stackAfterBack.length > 0 ?
-            stackAfterBack[stackAfterBack.length - 1].name : prevName
+        // 底层页从卡片态原地放大复原
+        if(prevHasAnim){
+            prevVm.scrclass = ""
+            prevVm.scrclass = "scroll-frombackanim"
+        }
+        if(prevName !== ""){
+            global.currentPageName = prevName
+        }
         global.logger.log("[ui.OnBackPress] back. lastpage=", global.currentPageName)
 
         setTimeout(() => {
             global.uiBackPending = false
         }, 50)
-    }, currentHasAnim ? 300 : 0)
+    }, currentHasAnim ? 150 : 0)
 }
