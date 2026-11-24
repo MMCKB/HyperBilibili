@@ -106,6 +106,9 @@ export default {
         })
     },
     Click(){
+        if (!this.localsrc) {
+            return
+        }
         this.$emit('click', {
             src: this.localsrc
         })

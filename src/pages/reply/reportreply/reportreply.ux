@@ -1,0 +1,151 @@
+<import name="title-bar" src="@components/TitleBar/TitleBar.ux"></import>
+<import name="default-button" src="@components/DefaultButton/DefaultButton.ux"></import>
+<import name="full-screen-input" src="@components/FullScreenInput/FullScreenInput.ux"></import>
+
+<template>
+  <div class="page">
+    <scroll scroll-y="true" class="scroll {{scrclass}}" bounces="true">
+      <title-bar title="reportreply.title"></title-bar>
+      <div class="report-target">
+        <text class="report-target-title">举报 {{ uname || "该用户" }} 的评论</text>
+        <text class="report-target-excerpt">{{ excerpt || "（无文字内容）" }}</text>
+      </div>
+      <text class="report-label">选择举报理由</text>
+      <div class="report-reasons">
+        <div class="report-reason {{ selectedReason === $item.reason ? 'report-reason-selected' : '' }}"
+          for="{{reasons}}" @click="SelectReason($item)">
+          <text class="report-reason-text {{ selectedReason === $item.reason ? 'report-reason-text-selected' : '' }}">{{ $item.label }}</text>
+          <image class="report-reason-check" if="{{ selectedReason === $item.reason }}" src="/common/trueicon.png"></image>
+        </div>
+      </div>
+      <div class="report-other" if="{{ selectedReason === 0 }}" @click="EditOtherReason">
+        <text class="report-other-text {{ otherText ? '' : 'report-other-placeholder' }}">{{ otherText || "填写举报理由（必填）" }}</text>
+      </div>
+      <div class="report-blacklist" @click="ToggleBlacklist">
+        <text class="report-blacklist-text">同时拉黑该用户</text>
+        <text class="report-blacklist-value">{{ addBlacklist ? "✓" : "○" }}</text>
+      </div>
+      <default-button text="reportreply.submit" primary margin-top="20px" disabled="{{ submitPending }}"
+        @click="Submit"></default-button>
+      <text style="margin-top: 30px"></text>
+    </scroll>
+    <full-screen-input style="position: absolute" if="{{ otherMode }}" initial-value="{{ otherText }}"
+      maxlength="100" @send="FinishOtherReason" @exit="ExitOtherReason"></full-screen-input>
+  </div>
+</template>
+
+<script>
+import router from "@system.router"
+import prompt from "@system.prompt"
+
+export default {
+  public: {
+    type: 1,
+    oid: "",
+    rpid: "",
+    uname: "",
+    excerpt: ""
+  },
+  private: {
+    selectedReason: -1,
+    otherText: "",
+    otherMode: false,
+    addBlacklist: false,
+    submitPending: false,
+    scrclass: "",
+    reasons: [
+      {reason: 1, label: "垃圾广告"},
+      {reason: 2, label: "色情"},
+      {reason: 3, label: "刷屏"},
+      {reason: 4, label: "引战"},
+      {reason: 5, label: "剧透"},
+      {reason: 6, label: "政治"},
+      {reason: 7, label: "人身攻击"},
+      {reason: 8, label: "内容不相关"},
+      {reason: 9, label: "违法违规"},
+      {reason: 10, label: "低俗"},
+      {reason: 12, label: "赌博诈骗"},
+      {reason: 13, label: "传播不实信息"},
+      {reason: 15, label: "侵犯隐私"},
+      {reason: 17, label: "青少年不良信息"},
+      {reason: 0, label: "其它"}
+    ]
+  },
+  SelectReason(item) {
+    if (!item) return
+    this.selectedReason = item.reason
+    if (item.reason === 0) {
+      this.EditOtherReason()
+    }
+  },
+  EditOtherReason() {
+    this.otherMode = true
+  },
+  FinishOtherReason(evt) {
+    this.otherMode = false
+    this.otherText = String(evt.detail.content || "").trim()
+    if (!this.otherText) {
+      prompt.showToast({message: "请填写举报理由"})
+    }
+  },
+  ExitOtherReason() {
+    this.otherMode = false
+  },
+  ToggleBlacklist() {
+    if (this.submitPending) return
+    this.addBlacklist = !this.addBlacklist
+  },
+  Submit() {
+    if (this.submitPending) return
+    if (this.selectedReason < 0) {
+      prompt.showToast({message: "请先选择举报理由"})
+      return
+    }
+    if (this.selectedReason === 0 && !this.otherText) {
+      prompt.showToast({message: "请填写举报理由"})
+      this.EditOtherReason()
+      return
+    }
+    this.DoReport()
+  },
+  async DoReport() {
+    this.submitPending = true
+    try {
+      const result = await global.biliclient.reportReply(
+        String(this.type),
+        String(this.oid),
+        String(this.rpid),
+        this.selectedReason,
+        this.otherText,
+        this.addBlacklist
+      )
+      const code = result ? Number(result.code) : -1
+      if (code === 0 || code === 12008) {
+        prompt.showToast({
+          message: code === 0 ? (this.addBlacklist ? "举报成功，已拉黑该用户" : "举报成功，感谢反馈") : "已经举报过了"
+        })
+        setTimeout(() => {
+          router.back()
+        }, 600)
+      } else {
+        prompt.showToast({
+          message: result
+            ? `举报失败，错误代码：${result.code} 原因：${result.message}`
+            : "举报失败，请重试",
+          duration: 4000
+        })
+      }
+    } catch (e) {
+      global.logger.error("举报评论失败: ", e)
+      prompt.showToast({message: "举报失败，请重试", duration: 3000})
+    } finally {
+      this.submitPending = false
+    }
+  }
+}
+</script>
+
+<style lang="less">
+@import "@less/global.less";
+@import "./reportreply.less";
+</style>

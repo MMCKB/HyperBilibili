@@ -4,4 +4,5 @@ export interface AccountData {
     biliJct: string;
     dedeUserID: string;
     sid: string;
+    extraCookies?: { [key: string]: string };
 }

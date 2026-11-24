@@ -10,9 +10,14 @@
       </div>
     </div>
     <div if="{{useRowLayout}}" class="comp-root row">
-      <div class="titlebar bar-row" style="{{barRowStyle}}" @click="RouterBack()">
-        <image src="/common/icons8-back-100.png" style="width: 30px; height: 30px; margin-right: 5px"></image>
-        <text style="font-size: 32px; font-weight: normal">{{ _parentVM.$t(title) }}</text>
+      <div class="titlebar bar-row" style="{{barRowStyle}}">
+        <div class="titlebar-main" @click="RouterBack()">
+          <image src="/common/icons8-back-100.png" style="width: 30px; height: 30px; margin-right: 5px"></image>
+          <text style="font-size: 32px; font-weight: normal">{{ _parentVM.$t(title) }}</text>
+        </div>
+        <div class="title-action" if="{{rightText}}" @click="RightClick">
+          <text class="title-action-text">{{ _parentVM.$t(rightText) }}</text>
+        </div>
         <time-view style="position: relative;"></time-view>
       </div>
     </div>
@@ -22,7 +27,7 @@
 <script>
 import router from "@system.router"
 export default {
-  props: ["title", "backDisabled"],
+  props: ["title", "backDisabled", "disableSwipeBack", "rightText"],
   data: {
     barRowStyle: {},
     useRowLayout: false
@@ -31,10 +36,13 @@ export default {
     if (this.backDisabled) return
     global.ui.OnBackPressTriggered()
   },
+  RightClick() {
+    this.$emit("rightClick")
+  },
   onInit() {
     global.ui.InitPage(this._parentVM)
     this._parentVM.$options.onBackPress = () => {
-      if (this.backDisabled) return true
+      if (this.backDisabled || this.disableSwipeBack) return true
       global.ui.OnBackPressTriggered()
       return true
     }
@@ -72,5 +80,27 @@ export default {
   justify-content: flex-start;
   margin-top: 10px;
   margin-left: 100px;
+}
+
+.titlebar-main {
+  flex-direction: row;
+  align-items: center;
+}
+
+.title-action {
+  height: 36px;
+  padding-left: 10px;
+  padding-right: 10px;
+  margin-left: 8px;
+  border-radius: 18px;
+  background-color: #262626;
+  align-items: center;
+  justify-content: center;
+}
+
+.title-action-text {
+  font-size: 18px;
+  font-weight: 600;
+  color: #ffffff;
 }
 </style>

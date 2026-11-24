@@ -58,6 +58,7 @@
           <text class="vidtooltext">{{ watchLaterPending ? "处理中" : (watchLaterAdded ? "已加入" : $t("video.showLater")) }}</text>
         </div>
       </scroll>
+      <default-button if="{{ hasSeason }}" text="video.season" margin-top="20px" @click="OpenSeason"></default-button>
       <default-button text="video.sendReply" margin-top="20px" @click="Reply"></default-button>
       <image src="/common/featurebtn_replyarea.png" style="margin-top: 15px" @click="GoReplyArea()"></image>
     </scroll>
@@ -165,6 +166,7 @@ export default {
   private: {
     vid: {},
     liked: false,
+    likeRequestPending: false,
     coined: false,
     stared: false,
     likesrc: "/common/vidtool_like.png",
@@ -211,6 +213,15 @@ export default {
     },
     stat_favorite() {
       return this.$app.$def.tools.formatNumber(this.vid.stat.favorite)
+    },
+    hasSeason() {
+      const season = this.vid && this.vid.ugc_season
+      if (!season || !Array.isArray(season.sections)) return false
+      for (let i = 0; i < season.sections.length; i++) {
+        const episodes = season.sections[i] && season.sections[i].episodes
+        if (Array.isArray(episodes) && episodes.length > 0) return true
+      }
+      return false
     }
   },
   onInit() {
@@ -483,19 +494,60 @@ export default {
   },
   async PowerIt() {
     prompt.showToast({message: "一键三连中！"})
-    this.LikeClick()
+    if (!this.liked) {
+      await this.SetVideoLike(1)
+    }
     this.QuickCoin()
-    this.AddToFav()
+    if (!this.stared) {
+      this.AddToFav()
+    }
   },
   async LikeClick() {
-    var result = await global.biliclient.LikeVideo(this.vid.bvid, 1)
-    const message =
-      result.code === 0 ? "点赞成功" : `点赞失败，错误代码：${result.code} 原因：${result.message}`
-    prompt.showToast({
-      message,
-      duration: result.code === 0 ? 2000 : 4000
-    })
-    this.UpdateVideoToolbarStatus()
+    if (!this.vid || !this.vid.bvid) {
+      prompt.showToast({message: "视频还没加载好，请稍后再试"})
+      return
+    }
+    await this.SetVideoLike(this.liked ? 2 : 1)
+  },
+  // like：1 点赞，2 取消赞
+  async SetVideoLike(like) {
+    if (this.likeRequestPending) return false
+    this.likeRequestPending = true
+    try {
+      const wasLiked = !!this.liked
+      const result = await global.biliclient.LikeVideo(this.vid.bvid, like)
+      const code = result ? Number(result.code) : -1
+      if (code === 0 || code === 65006 || code === 65004) {
+        // 重复点赞/取消失败也视为已处于目标状态，按目标状态刷新界面
+        this.liked = like === 1
+        if (wasLiked !== this.liked) {
+          const stat = this.vid.stat || {}
+          const nextLike = Math.max(0, (Number(stat.like) || 0) + (this.liked ? 1 : -1))
+          this.vid = Object.assign({}, this.vid, {
+            stat: Object.assign({}, stat, { like: nextLike })
+          })
+        }
+        this.UpdateToolBarIconSrc()
+        let message = like === 1 ? "点赞成功" : "已取消赞"
+        if (code === 65006) message = "已经赞过了"
+        if (code === 65004) message = "当前未点赞"
+        prompt.showToast({message, duration: 2000})
+        return true
+      }
+      prompt.showToast({
+        message: result
+          ? `点赞失败，错误代码：${result.code} 原因：${result.message}`
+          : "点赞失败，请重试",
+        duration: 4000
+      })
+      return false
+    } catch (e) {
+      global.logger.error("点赞失败: ", e)
+      prompt.showToast({message: "点赞失败，请重试", duration: 3000})
+      return false
+    } finally {
+      this.likeRequestPending = false
+    }
   },
   CoinClick() {
     if (this.coinRequestPending) return
@@ -616,16 +668,79 @@ export default {
       message: "由于B站风控，该功能暂不可用"
     })
   },
+  BuildVideoInfoText() {
+    const title = this.vid.title || "未知"
+    const bvid = this.vid.bvid || this.bvid || "未知"
+    const desc = this.vid.desc || "暂无简介"
+    return `【视频信息】\n标题：${title}\nBV号：${bvid}\n简介：\n${desc}`
+  },
+  formatSummaryDuration(sec) {
+    const total = Math.max(0, parseInt(sec, 10) || 0)
+    const minutes = Math.floor(total / 60)
+    const rest = total % 60
+    return `${minutes}:${rest < 10 ? "0" : ""}${rest}`
+  },
+  BuildAISummaryText(result) {
+    if (!result) return "获取AI总结失败，请稍后再试"
+    if (result.available) {
+      let text = result.summary || ""
+      const outline = Array.isArray(result.outline) ? result.outline : []
+      if (outline.length > 0) {
+        text += "\n\n章节大纲："
+        for (let i = 0; i < outline.length; i++) {
+          const chapter = outline[i] || {}
+          text += `\n${this.formatSummaryDuration(chapter.timestamp)} ${chapter.title || ""}`
+          const parts = chapter.part_outline
+          if (Array.isArray(parts)) {
+            for (let j = 0; j < parts.length; j++) {
+              const part = parts[j] || {}
+              text += `\n  ${this.formatSummaryDuration(part.timestamp)} ${part.content || ""}`
+            }
+          }
+        }
+      }
+      return text
+    }
+    if (result.stage === "processing") return "AI视频总结生成中，请稍后再试"
+    if (result.stage === "nospeech") return "该视频没有可识别的语音，无法生成AI总结"
+    if (result.stage === "unsupported") return "该视频暂不支持AI总结，可能包含敏感内容"
+    if (result.stage === "empty") return "该视频的AI总结内容为空"
+    if (result.stage === "network") return "获取AI总结失败，网络异常或请求被拦截"
+    if (result.stage === "parse" || result.stage === "outer" || result.stage === "inner") {
+      return "获取AI总结失败，返回数据异常" + (result.message ? `（${result.message}）` : "")
+    }
+    return "该视频暂时没有AI总结"
+  },
   async AISummary() {
-    const summary =
-      (await global.biliclient.getVideoAISummaryByBVID(
+    if (!this.vid || !this.vid.bvid) {
+      prompt.showToast({message: "视频还没加载好，请稍后再试"})
+      return
+    }
+    let aiText = "获取AI总结失败，请稍后再试"
+    try {
+      const result = await global.biliclient.getVideoAISummaryByBVID(
         this.vid.bvid,
         this.vid.cid,
-        this.vid.owner.mid
-      )) || "该视频没有摘要，可能是其内容中包含敏感信息或没有可识别的音频"
+        this.vid.owner ? this.vid.owner.mid : 0
+      )
+      aiText = this.BuildAISummaryText(result)
+    } catch (e) {
+      global.logger.error("获取AI总结出错: ", e)
+    }
     router.push({
       uri: "pages/tools/textdetail",
-      params: {text: summary}
+      params: {
+        text: this.BuildVideoInfoText() + "\n\n【AI视频总结】\n" + aiText,
+        titletext: "视频总结"
+      }
+    })
+  },
+  OpenSeason() {
+    const season = this.vid && this.vid.ugc_season
+    if (!season || !Array.isArray(season.sections)) return
+    router.push({
+      uri: "pages/video/season",
+      params: {bvid: this.vid.bvid || this.bvid}
     })
   },
   async AddToFav() {

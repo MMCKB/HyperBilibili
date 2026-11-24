@@ -21,14 +21,33 @@ export const BilibiliClientAPIRequestMethods = {
 
     // 构建Cookie字符串
     getCookieString(this: any): string {
-        let cookies = `buvid3=${this.buvid3}; buvid4=${this.buvid4}; `;
+        const cookies: string[] = [];
+        const addCookie = (name: string, value: any) => {
+            if (value !== null && value !== undefined && value !== "" && value !== "null") {
+                cookies.push(`${name}=${value}`);
+            }
+        };
+
+        addCookie("buvid3", this.buvid3);
+        addCookie("buvid4", this.buvid4);
         if (this.sessData) {
-            cookies += `SESSDATA=${this.sessData}; bili_jct=${this.biliJct}; DedeUserID=${this.dedeUserID}; sid=${this.sid}; `;
+            addCookie("SESSDATA", this.sessData);
+            addCookie("bili_jct", this.biliJct);
+            addCookie("DedeUserID", this.dedeUserID);
+            addCookie("sid", this.sid);
+        }
+        if (this.extraCookies) {
+            const skip = ["buvid3", "buvid4", "SESSDATA", "bili_jct", "DedeUserID", "sid"];
+            Object.keys(this.extraCookies).forEach(name => {
+                if (skip.indexOf(name) === -1) {
+                    addCookie(name, this.extraCookies[name]);
+                }
+            });
         }
         // 专栏保持旧版
-        cookies += "opus-goback=1"
+        cookies.push("opus-goback=1");
 
-        return cookies;
+        return cookies.join("; ");
     },
 
     // Wbi签名
@@ -57,6 +76,14 @@ export const BilibiliClientAPIRequestMethods = {
                 responseType: responseType,
                 header: this.getHeaders()
             });
+            try {
+                const setCookie = response.headers && (response.headers["Set-Cookie"] || response.headers["set-cookie"]);
+                if (setCookie && this.extractCookiesFromResponse) {
+                    this.extractCookiesFromResponse(setCookie);
+                }
+            } catch (e) {
+                global.logger.log("解析响应 Cookie 失败:", e);
+            }
             return response.data;
         } catch (error) {
             global.logger.error(`GET请求失败，详细数据：`, error);

@@ -34,11 +34,91 @@ export const BilibiliClientVideoMethods = {
         return response.data.data.favoured;
     },
 
-    // 获取视频AI摘要
+    // 获取视频AI摘要（B站官方 conclusion/get，wbi签名）
+    // 返回 { available, code, summary, outline, stage, message }
+    // stage: ok / processing（生成中）/ nospeech（无可识别语音）/ unsupported（内容不支持）
+    //        empty（总结为空）/ outer / inner / parse / network
     async getVideoAISummaryByBVID(this: any, bvid: string, cid: string, up_mid: string) {
         const url = "https://api.bilibili.com/x/web-interface/view/conclusion/get";
-        const response = await this.getRequestWbi(url, { bvid, cid, up_mid });
-        return response.data.data.model_result.summary;
+        const tryParse = (value: any): any => {
+            if (typeof value === "string") {
+                try {
+                    return JSON.parse(value);
+                } catch (e) {
+                    return value;
+                }
+            }
+            return value;
+        };
+
+        let response: any;
+        try {
+            response = await this.getRequestWbi(url, {
+                bvid,
+                cid,
+                up_mid
+            });
+        } catch (e) {
+            global.logger.error("[getVideoAISummaryByBVID] request failed: ", e);
+            return { available: false, code: -999, summary: "", outline: [], stage: "network", message: "网络请求失败" };
+        }
+
+        let body = tryParse(response);
+        if (!body || typeof body !== "object" || Array.isArray(body)) {
+            return { available: false, code: -998, summary: "", outline: [], stage: "parse", message: "返回数据异常" };
+        }
+        // 某些适配层会把真实响应再包一层 { code: 200, data: "<json>" }
+        if (body.message === undefined && body.data !== undefined &&
+            (body.code === undefined || String(body.code) === "200")) {
+            const inner = tryParse(body.data);
+            if (inner && typeof inner === "object" && inner.code !== undefined && inner.message !== undefined) {
+                body = inner;
+            }
+        }
+
+        const outerCode = Number(body.code);
+        const data = body.data;
+        if (outerCode !== 0 || !data) {
+            return {
+                available: false,
+                code: outerCode,
+                summary: "",
+                outline: [],
+                stage: "outer",
+                message: String(body.message || body.msg || "")
+            };
+        }
+
+        const innerCode = Number(data.code);
+        const model = data.model_result;
+        if (innerCode !== 0 || !model) {
+            let stage = "inner";
+            if (innerCode === 1) {
+                stage = String(data.stid) === "0" ? "processing" : "nospeech";
+            } else if (innerCode === -1) {
+                stage = "unsupported";
+            }
+            return {
+                available: false,
+                code: innerCode,
+                summary: "",
+                outline: [],
+                stage,
+                message: String(data.message || data.msg || body.message || "")
+            };
+        }
+
+        const summary = model.summary || "";
+        const outline = Array.isArray(model.outline) ? model.outline : [];
+        const available = !!(summary || outline.length > 0);
+        return {
+            available,
+            code: 0,
+            summary,
+            outline,
+            stage: available ? "ok" : "empty",
+            message: ""
+        };
     },
 
     // 获取根据BVID与CID获取视频MP4流地址

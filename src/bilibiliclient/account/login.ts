@@ -56,6 +56,7 @@ export const BilibiliClientLoginMethods = {
             this.biliJct = accountData.biliJct;
             this.dedeUserID = accountData.dedeUserID;
             this.sid = accountData.sid;
+            this.extraCookies = accountData.extraCookies || {};
             global.logger.log('使用存储的账号数据登录成功');
             global.logger.log('拉账号信息')
             const accountInfoOk = await this.updateAccountInfo();
@@ -93,6 +94,7 @@ export const BilibiliClientLoginMethods = {
         this.biliJct = null;
         this.dedeUserID = null;
         this.sid = null;
+        this.extraCookies = {};
         this.accountInfo = null;
 
         return new Promise((resolve) => {
@@ -126,12 +128,24 @@ export const BilibiliClientLoginMethods = {
         if (typeof setCookieHeaders === 'string') {
             setCookieHeaders = setCookieHeaders.split(', ');
         }
+        if (!this.extraCookies) {
+            this.extraCookies = {};
+        }
 
         setCookieHeaders.forEach(cookie => {
-            if (cookie.includes('SESSDATA')) this.sessData = this.parseCookie(cookie, 'SESSDATA');
-            else if (cookie.includes('bili_jct')) this.biliJct = this.parseCookie(cookie, 'bili_jct');
-            else if (cookie.includes('DedeUserID') && !cookie.includes('DedeUserID__ckMd5')) this.dedeUserID = this.parseCookie(cookie, 'DedeUserID');
-            else if (cookie.includes('sid')) this.sid = this.parseCookie(cookie, 'sid');
+            const nameMatch = cookie.match(/^\s*([^=;]+)=([^;]*)/);
+            if (!nameMatch) {
+                return;
+            }
+            const name = nameMatch[1].trim();
+            const value = nameMatch[2];
+            if (name === 'SESSDATA') this.sessData = value;
+            else if (name === 'bili_jct') this.biliJct = value;
+            else if (name === 'DedeUserID') this.dedeUserID = value;
+            else if (name === 'sid') this.sid = value;
+            else if (name === 'buvid3') this.buvid3 = value;
+            else if (name === 'buvid4') this.buvid4 = value;
+            else if (value) this.extraCookies[name] = value;
         });
     },
 
@@ -182,7 +196,7 @@ export const BilibiliClientLoginMethods = {
     // 保存账号数据到本地存储
     async storeAccountData(this: any): Promise<void> {
         if (this.sessData && this.biliJct && this.dedeUserID && this.sid) {
-            const accountData: AccountData = { sessData: this.sessData, biliJct: this.biliJct, dedeUserID: this.dedeUserID, sid: this.sid };
+            const accountData: AccountData = { sessData: this.sessData, biliJct: this.biliJct, dedeUserID: this.dedeUserID, sid: this.sid, extraCookies: this.extraCookies || {} };
             return new Promise((resolve, reject) => {
                 storage.set({
                     key: 'bilibili_account',

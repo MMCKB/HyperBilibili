@@ -84,8 +84,16 @@
     "replytools": {
         "title": "评论",
         "like": "点赞该评论",
+        "unlike": "取消赞",
         "showReply": "查看回复",
         "showDetail": "查看详情"
+    },
+    "reportreply": {
+        "title": "举报评论",
+        "submit": "提交举报"
+    },
+    "replys": {
+        "sort": "排序"
     },
     "savedcontent": {
         "title": "已缓存"
@@ -108,7 +116,8 @@
         "manifest": "视频清单",
         "showLater": "稍后再看",
         "showOnPhone": "手机上看",
-        "sendReply": "发送评论"
+        "sendReply": "发送评论",
+        "season": "查看合集"
     },
     "settings": {
         "title": "设置",
@@ -116,6 +125,7 @@
         "videoPushCount": "首页视频推荐数",
         "enableFullAnimation": "启用完整动画",
         "startupPage": "起始页面",
+        "enableCommentImages": "查看评论图片",
         "clearTemp": "清除缓存",
         "logOut": "退出登录",
         "donation": "捐赠",

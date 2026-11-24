@@ -30,6 +30,7 @@ class BilibiliClient {
     public biliJct: string | null = null;
     public dedeUserID: string | null = null;
     public sid: string | null = null;
+    public extraCookies: { [key: string]: string } = {};
 
     // B站账号信息（非AccountData）
     public accountInfo: any | null = null;

@@ -1,5 +1,5 @@
 <template>
-  <div class="reply">
+  <div class="reply {{showImages ? 'reply_withimg' : ''}}" @longpress="OnLongPress">
     <div class="userinfo">
       <image class="userimg" onclick="OpenUser(reply.member.mid)" style="lines: 1" src="{{reply.member.avatar}}@44w_44h" alt="/common/fullgray.png"></image>
       <div style="flex-direction: column; justify-content: center" onclick="ShowTools(reply)">
@@ -7,6 +7,8 @@
           <text class="username" style="margin-left: 10px">{{ reply.member.uname }}</text>
           <image style="width: 24px; height: 14px; object-fit: contain; margin-left: 6px"
             src="/common/bililevel/lv{{reply.member.level_info.current_level}}.png"></image>
+          <text class="replybadge replybadge-top" if="{{ isTopBadge }}">置顶</text>
+          <text class="replybadge replybadge-up" if="{{ isUpBadge }}">UP</text>
         </div>
         <div class="rowbar" style="margin-left: 10px">
           <text class="stattext">{{ reply.reply_control.time_desc }}</text>
@@ -15,14 +17,23 @@
       </div>
     </div>
     <div class="replycontentdiv" onclick="ShowTools(reply)">
-      <text class="replycontent">{{ reply.content.message }}</text>
+      <text class="replycontent">{{ displayMessage }}</text>
+    </div>
+    <div class="replyimages" if="{{showImages}}">
+      <div class="replyimagecell" for="{{displayImages}}" @click="OpenPicture($idx)">
+        <image class="replyimage" src="{{$item.thumb}}" alt="/common/fullgray.png"></image>
+        <div class="replyimagemore" if="{{$item.more > 0}}">
+          <text class="replyimagemoretext">+{{$item.more}}</text>
+        </div>
+      </div>
     </div>
     <div class="bottom_bar">
       <div class="reply_replybtn" onclick="Reply(reply.rpid)">
         <text class="reply_replytext">回复</text>
       </div>
-      <div class="replystat" style="margin-left: 25px">
-        <image class="replystat_img" src="/common/replycontrol_like.png"></image>
+      <div class="replystat" style="margin-left: 25px" @click="Like">
+        <image class="replystat_img"
+          src="{{ likedState ? '/common/reply_liked.png' : '/common/replycontrol_like.png' }}"></image>
         <text class="replystat_count" style="margin-left: 5px">{{reply.like}}</text>
       </div>
       <div class="replystat" style="margin-left: 15px" if={{!secmode}}>
@@ -35,9 +46,137 @@
 
 <script>
 import router from "@system.router"
+import {
+  ExtractCommentPictures,
+  CommentThumbUrl,
+  CommentPreviewUrl,
+  IsCommentImagesEnabled,
+  CleanCommentMessage
+} from "../../commentimages"
+
 export default {
   props: ["reply", "secmode"],
+  private: {
+    images: [],
+    displayImages: [],
+    showImages: false,
+    displayMessage: "",
+    isTopBadge: false,
+    isUpBadge: false,
+    likedState: false,
+    suppressClick: false,
+    suppressTimer: 0
+  },
+  onInit() {
+    this.RefreshImages(this.reply)
+    this.$watch("reply", "RefreshImages")
+  },
+  RefreshImages(value) {
+    let reply = value
+    if (typeof reply === "string") {
+      try {
+        reply = JSON.parse(reply)
+      } catch (e) {
+        reply = null
+      }
+    }
+    const content = reply && reply.content ? reply.content : {}
+    const message = content.message ? String(content.message) : ""
+    let images = []
+    if (IsCommentImagesEnabled()) {
+      images = ExtractCommentPictures(reply)
+    }
+    this.images = images
+    this.showImages = images.length > 0
+    this.displayImages = images.slice(0, 4).map((picture, index) => {
+      return {
+        thumb: CommentThumbUrl(picture.url, 56),
+        more: index === 3 && images.length > 4 ? images.length - 4 : 0
+      }
+    })
+    const text = CleanCommentMessage(message)
+    this.displayMessage = text || (images.length > 0 ? "[图片]" : "")
+    this.isTopBadge = !!(reply && reply.isTop)
+    this.isUpBadge = !!(reply && reply.isUp)
+    this.likedState = !!(reply && Number(reply.action) === 1)
+  },
+  ConsumeLongPressClick() {
+    if (this.suppressClick) {
+      this.suppressClick = false
+      clearTimeout(this.suppressTimer)
+      return true
+    }
+    return false
+  },
+  Like() {
+    if (this.ConsumeLongPressClick()) return
+    this.$emit("like", {
+      reply: this.reply
+    })
+  },
+  OnLongPress() {
+    // 长按后松手会补发 click，这里拦截，避免弹出菜单的同时跳进评论工具页
+    this.suppressClick = true
+    clearTimeout(this.suppressTimer)
+    this.suppressTimer = setTimeout(() => {
+      this.suppressClick = false
+    }, 1500)
+    this.$emit("showMenu", {
+      reply: this.reply
+    })
+  },
+  ShowTools(reply) {
+    if (this.ConsumeLongPressClick()) return
+    this.$emit("showTools", {
+      reply: reply
+    })
+  },
+  OpenPicture(index) {
+    if (this.ConsumeLongPressClick()) return
+    if (!this.images.length) {
+      return
+    }
+    let start = Number(index)
+    if (isNaN(start) || start < 0 || start >= this.images.length) {
+      start = 0
+    }
+    const entries = []
+    for (let i = 0; i < this.images.length; i++) {
+      const picture = this.images[i]
+      const url = CommentPreviewUrl(picture.url)
+      if (!url) {
+        continue
+      }
+      entries.push({
+        url,
+        meta: { w: picture.width, h: picture.height },
+        sourceIndex: i
+      })
+    }
+    if (!entries.length) {
+      return
+    }
+    let target = 0
+    for (let i = 0; i < entries.length; i++) {
+      if (entries[i].sourceIndex === start) {
+        target = i
+        break
+      }
+    }
+    const urls = entries.map(entry => entry.url)
+    const meta = entries.map(entry => entry.meta)
+    router.push({
+      uri: "pages/tools/picturedetail",
+      params: {
+        img_uri: urls[target],
+        img_uris: JSON.stringify(urls),
+        img_meta: JSON.stringify(meta),
+        start_index: target
+      }
+    })
+  },
   OpenUser(id) {
+    if (this.ConsumeLongPressClick()) return
     router.push({
       uri: "pages/user",
       params: {
@@ -45,12 +184,8 @@ export default {
       }
     })
   },
-  ShowTools(reply) {
-    this.$emit("showTools", {
-      reply: reply
-    })
-  },
   Reply(rpid) {
+    if (this.ConsumeLongPressClick()) return
     this.$emit("reply", {
       rpid: rpid
     })
@@ -85,7 +220,7 @@ export default {
 .username {
   font-size: 20px;
   font-weight: 600;
-  max-width: 160px;
+  max-width: 115px;
   max-height: 25px;
 }
 
@@ -100,11 +235,57 @@ export default {
   justify-content: flex-start; /* 保证内容顶部对齐 */
 }
 
+.reply_withimg {
+  height: 262px;
+}
+
 .replycontent {
   width: 100%;
   font-size: 20px;
   font-weight: 600;
   text-overflow: ellipsis;
+}
+
+.replyimages {
+  width: 253px;
+  height: 56px;
+  margin-top: 6px;
+  margin-left: 33px;
+  flex-direction: row;
+  align-items: flex-start;
+}
+
+.replyimagecell {
+  width: 56px;
+  height: 56px;
+  margin-right: 7px;
+  border-radius: 10px;
+  position: relative;
+}
+
+.replyimage {
+  width: 56px;
+  height: 56px;
+  border-radius: 10px;
+  object-fit: cover;
+}
+
+.replyimagemore {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  width: 34px;
+  height: 22px;
+  border-radius: 11px;
+  background-color: #ff7da8;
+  align-items: center;
+  justify-content: center;
+}
+
+.replyimagemoretext {
+  font-size: 16px;
+  font-weight: 600;
+  color: #262626;
 }
 
 .reply_replybtn {
@@ -131,6 +312,26 @@ export default {
 .stattext {
   font-size: 14px;
   color: rgb(136, 136, 136);
+}
+
+.replybadge {
+  height: 20px;
+  padding-left: 6px;
+  padding-right: 6px;
+  margin-left: 6px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #262626;
+  text-align: center;
+}
+
+.replybadge-top {
+  background-color: #ff7da8;
+}
+
+.replybadge-up {
+  background-color: #0d84ff;
 }
 
 .rowbar {

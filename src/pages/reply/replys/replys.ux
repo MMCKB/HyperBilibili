@@ -9,24 +9,70 @@
 <template>
   <div class="page">
     <scroll scroll-y="true" class="scroll {{scrclass}}" bounces="true">
-      <title-bar title="{{titletext}}"></title-bar>
+      <title-bar title="{{titletext}}" right-text="{{ secmode ? '' : 'replys.sort' }}"
+      @right-click="OpenSortPicker"></title-bar>
       <image style="position: absolute; margin-top: 245px" if="{{anims.show_loading}}" src="{{anims.loading_src.value}}"></image>
       <list class="replylist">
         <list-item type="replies"
-          style="width: 100%; justify-content: center; margin-top: 10px; height: {{PlaceHolderShowCheck($item.rpid)}}"
+          style="width: 100%; justify-content: center; margin-top: 10px; height: {{ReplyItemHeight($item)}}"
           for="{{replies}}">
-          <reply secmode={{secmode}} reply="{{$item}}" @show-tools="ShowTools" @reply="Reply"></reply>
+          <reply secmode={{secmode}} reply="{{$item}}" @show-tools="ShowTools" @reply="Reply"
+            @show-menu="OpenReplyMenu" @like="ToggleReplyLike"></reply>
         </list-item>
       </list>
     </scroll>
-    <floating-page-changer current_pn="{{current_pn}}" @backpn="BackPN" @nextpn="NextPN"></floating-page-changer>
+    <floating-page-changer current_pn="{{current_pn}}" show-send="{{!secmode}}" @backpn="BackPN"
+      @nextpn="NextPN" @send-comment="OpenSendComment"></floating-page-changer>
     <full-screen-input if="{{replymode}}" @send="SendReply" @exit="ExitInput"></full-screen-input>
+    <div class="replymenu-overlay {{ menuClosing ? 'modal-closing' : 'modal-entering' }}" if="{{menuMounted}}">
+      <div class="replymenu-card replymenu-card-{{ menuMode }} {{ menuClosing ? '' : 'modal-panel-entering' }}">
+        <text class="replymenu-title">{{ menuTitle }}</text>
+        <text class="replymenu-excerpt" if="{{ menuExcerpt }}">{{ menuExcerpt }}</text>
+        <div class="sortlist" if="{{ menuMode === 'sort' }}">
+          <div class="sortoption {{ sortType === $item.value ? 'sortoption-active' : '' }}" for="{{sortOptions}}"
+            @click="SelectSort($item.value)">
+            <text class="sortoption-text {{ sortType === $item.value ? 'sortoption-text-active' : '' }}">{{ $item.label }}</text>
+          </div>
+        </div>
+        <div class="replymenu-option" if="{{ menuMode === 'sort' }}" @click="CloseReplyMenu">
+          <text class="replymenu-option-text">取消</text>
+        </div>
+        <div class="replymenu-actions" if="{{ menuMode === 'actions' }}">
+          <div class="replymenu-action" if="{{ menuCanDelete }}" @click="ShowDeleteConfirm">
+            <image class="replymenu-action-icon" src="/common/later_remove.png"></image>
+            <text class="replymenu-action-text">删除</text>
+          </div>
+          <div class="replymenu-action" if="{{ menuCanReport }}" @click="GoReport">
+            <image class="replymenu-action-icon replymenu-action-icon-warn" src="/common/warning_icon.png"></image>
+            <text class="replymenu-action-text">举报</text>
+          </div>
+        </div>
+        <div class="replymenu-option" if="{{ menuMode === 'actions' }}" @click="CloseReplyMenu">
+          <text class="replymenu-option-text">取消</text>
+        </div>
+        <text class="replymenu-tip" if="{{ menuMode === 'delete' }}">删除后无法恢复，确定删除这条评论吗？</text>
+        <div class="replymenu-buttons" if="{{ menuMode === 'delete' }}">
+          <div class="replymenu-btn" @click="BackToMenuActions">
+            <text class="replymenu-btn-text">取消</text>
+          </div>
+          <div class="replymenu-btn replymenu-btn-danger {{ deletePending ? 'replymenu-btn-pending' : '' }}"
+            @click="ConfirmDelete">
+            <text class="replymenu-btn-text">{{ deletePending ? "删除中…" : "删除" }}</text>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script>
 import router from "@system.router"
 import prompt from "@system.prompt"
+import {
+  CleanCommentMessage,
+  ExtractCommentPictures,
+  IsCommentImagesEnabled
+} from "@src/commentimages.ts"
 
 export default {
   public: {
@@ -35,6 +81,8 @@ export default {
     replycount: 0,
     // 仅二级评论需要提供
     rootrpid: "",
+    // 视频UP主mid，用于显示UP标识（二级评论由上一级页面传入）
+    upmid: "",
     // 是否处在二级评论中
     secmode: false
   },
@@ -43,12 +91,31 @@ export default {
     replies: [],
     maxpn: 1,
     current_pn: 1,
+    sortType: 1,
+    upMid: "",
+    loadToken: 0,
     anims: {
       show_loading: false
     },
     replymode: false,
     reply_target: null,
-    scrclass: ""
+    scrclass: "",
+    menuMounted: false,
+    menuClosing: false,
+    menuAnimTimer: 0,
+    menuMode: "actions",
+    menuTitle: "评论操作",
+    menuExcerpt: "",
+    menuReply: null,
+    menuCanDelete: false,
+    menuCanReport: false,
+    deletePending: false,
+    likeRpidPending: "",
+    sortOptions: [
+      {value: 1, label: "热度"},
+      {value: 0, label: "最新"},
+      {value: 2, label: "回复"}
+    ]
   },
   async SendReply(evt) {
     this.replymode = false
@@ -61,32 +128,45 @@ export default {
 
     let result
     try {
-      result = this.secmode
-        ? await global.biliclient.GiveTreeReply(
-            this.type,
-            this.oid,
-            this.reply_target,
-            this.rootrpid,
-            content
-          )
-        : await global.biliclient.GiveSecReply(
-            this.type,
-            this.oid,
-            this.reply_target,
-            content
-          )
+      if (this.secmode) {
+        result = await global.biliclient.GiveTreeReply(
+          this.type,
+          this.oid,
+          this.reply_target,
+          this.rootrpid,
+          content
+        )
+      } else if (!this.reply_target) {
+        // 顶部发送按钮：发送一级评论
+        result = await global.biliclient.GiveReply(
+          this.type,
+          this.oid,
+          content
+        )
+      } else {
+        result = await global.biliclient.GiveSecReply(
+          this.type,
+          this.oid,
+          this.reply_target,
+          content
+        )
+      }
 
-      if (result.code === 0) {
+      if (result && result.code === 0) {
         prompt.showToast({message: "发送成功"})
       } else {
         prompt.showToast({
-          message: `发送失败，错误代码：${result.code} 原因：${result.message}`,
+          message: result
+            ? `发送失败，错误代码：${result.code} 原因：${result.message}`
+            : "发送失败，请重试",
           duration: 4000
         })
       }
     } catch (error) {
       global.logger.error("发送评论时发生错误:", error)
       prompt.showToast({message: "发送失败，请重试。", duration: 4000})
+    } finally {
+      this.reply_target = null
     }
   },
   ExitInput() {
@@ -96,16 +176,204 @@ export default {
     this.replymode = true
     this.reply_target = evt.detail.rpid
   },
+  OpenSendComment() {
+    this.reply_target = null
+    this.replymode = true
+  },
   ShowTools(evt) {
     const uri = this.secmode ? "pages/tools/textdetail" : "pages/reply/replytools"
     const params = this.secmode
-      ? {text: evt.detail.reply.content.message, titletext: "评论详情"}
-      : {type: this.type, oid: this.oid, reply: evt.detail.reply}
+      ? {text: CleanCommentMessage(evt.detail.reply.content.message), titletext: "评论详情"}
+      : {type: this.type, oid: this.oid, reply: evt.detail.reply, upmid: this.upMid}
 
     router.push({uri, params})
   },
-  PlaceHolderShowCheck(rpid) {
-    return rpid === this.replies[this.replies.length - 1]?.rpid ? "315px" : "200px"
+  OpenSortPicker() {
+    if (this.secmode) return
+    this.menuReply = null
+    this.menuCanDelete = false
+    this.menuCanReport = false
+    this.menuMode = "sort"
+    this.menuTitle = "排序方式"
+    this.menuExcerpt = ""
+    this.ShowReplyMenu()
+  },
+  SelectSort(value) {
+    this.CloseReplyMenu()
+    if (this.secmode || this.sortType === value) return
+    this.sortType = value
+    this.current_pn = 1
+    this.LoadReplies()
+  },
+  async ToggleReplyLike(evt) {
+    let reply = evt && evt.detail ? evt.detail.reply : null
+    if (typeof reply === "string") {
+      try {
+        reply = JSON.parse(reply)
+      } catch (e) {
+        reply = null
+      }
+    }
+    if (!reply) return
+    const rpid = String(reply.rpid)
+    if (this.likeRpidPending) return
+    let current = reply
+    for (let i = 0; i < this.replies.length; i++) {
+      if (String(this.replies[i].rpid) === rpid) {
+        current = this.replies[i]
+        break
+      }
+    }
+    const wasLiked = Number(current.action) === 1
+    this.likeRpidPending = rpid
+    try {
+      const result = await global.biliclient.LikeReply(
+        String(this.type),
+        String(this.oid),
+        rpid,
+        wasLiked ? 0 : 1
+      )
+      if (result && Number(result.code) === 0) {
+        const delta = wasLiked ? -1 : 1
+        this.replies = this.replies.map((item) => {
+          if (String(item.rpid) !== rpid) return item
+          return Object.assign({}, item, {
+            action: wasLiked ? 0 : 1,
+            like: Math.max(0, (Number(item.like) || 0) + delta)
+          })
+        })
+        prompt.showToast({message: wasLiked ? "已取消赞" : "点赞成功！"})
+      } else {
+        prompt.showToast({
+          message: result
+            ? `点赞失败，错误代码：${result.code} 原因：${result.message}`
+            : "点赞失败，请重试",
+          duration: 4000
+        })
+      }
+    } catch (e) {
+      global.logger.error("点赞评论失败: ", e)
+      prompt.showToast({message: "点赞失败，请重试", duration: 3000})
+    } finally {
+      this.likeRpidPending = ""
+    }
+  },
+  GetReplyMid(reply) {
+    if (!reply) return ""
+    if (reply.member && reply.member.mid !== undefined && reply.member.mid !== null) {
+      return String(reply.member.mid)
+    }
+    if (reply.mid !== undefined && reply.mid !== null) return String(reply.mid)
+    return ""
+  },
+  OpenReplyMenu(evt) {
+    let reply = evt && evt.detail ? evt.detail.reply : null
+    if (typeof reply === "string") {
+      try {
+        reply = JSON.parse(reply)
+      } catch (e) {
+        reply = null
+      }
+    }
+    if (!reply) return
+    const myMid = global.biliclient.accountInfo ? String(global.biliclient.accountInfo.mid) : ""
+    const senderMid = this.GetReplyMid(reply)
+    const isMine = !!myMid && senderMid === myMid
+    const isOwner = !!myMid && !!this.upMid && myMid === String(this.upMid)
+    this.menuReply = reply
+    this.menuCanDelete = isMine || isOwner
+    this.menuCanReport = !isMine
+    if (!this.menuCanDelete && !this.menuCanReport) {
+      prompt.showToast({message: "没有可执行的操作"})
+      return
+    }
+    this.menuMode = "actions"
+    this.menuTitle = "评论操作"
+    this.menuExcerpt = CleanCommentMessage(reply.content ? reply.content.message : "").substring(0, 40)
+    this.ShowReplyMenu()
+  },
+  ShowReplyMenu() {
+    clearTimeout(this.menuAnimTimer)
+    this.menuClosing = false
+    this.menuMounted = true
+  },
+  CloseReplyMenu() {
+    clearTimeout(this.menuAnimTimer)
+    if (!this.menuMounted) return
+    this.menuClosing = true
+    this.menuAnimTimer = setTimeout(() => {
+      this.menuMounted = false
+      this.menuClosing = false
+      this.menuMode = "actions"
+    }, 180)
+  },
+  ShowDeleteConfirm() {
+    this.deletePending = false
+    this.menuMode = "delete"
+  },
+  BackToMenuActions() {
+    if (this.deletePending) return
+    this.menuMode = "actions"
+  },
+  GoReport() {
+    const reply = this.menuReply
+    if (!reply) return
+    const excerpt = this.menuExcerpt
+    this.CloseReplyMenu()
+    router.push({
+      uri: "pages/reply/reportreply",
+      params: {
+        type: this.type,
+        oid: this.oid,
+        rpid: reply.rpid,
+        uname: reply.member ? reply.member.uname : "",
+        excerpt: excerpt
+      }
+    })
+  },
+  RemoveReplyFromList(rpid) {
+    this.replies = this.replies.filter(function(reply) {
+      return String(reply.rpid) !== String(rpid)
+    })
+  },
+  async ConfirmDelete() {
+    if (this.deletePending || !this.menuReply) return
+    this.deletePending = true
+    try {
+      const result = await global.biliclient.deleteReply(
+        String(this.type),
+        String(this.oid),
+        String(this.menuReply.rpid)
+      )
+      const code = result ? Number(result.code) : -1
+      if (code === 0 || code === 12022) {
+        prompt.showToast({message: "已删除该评论"})
+        this.RemoveReplyFromList(this.menuReply.rpid)
+        this.CloseReplyMenu()
+      } else {
+        prompt.showToast({
+          message: result
+            ? `删除失败，错误代码：${result.code} 原因：${result.message}`
+            : "删除失败，请重试",
+          duration: 4000
+        })
+      }
+    } catch (e) {
+      global.logger.error("删除评论失败: ", e)
+      prompt.showToast({message: "删除失败，请重试", duration: 3000})
+    } finally {
+      this.deletePending = false
+    }
+  },
+  ReplyHasImages(reply) {
+    return IsCommentImagesEnabled() && ExtractCommentPictures(reply).length > 0
+  },
+  ReplyItemHeight(reply) {
+    const isLast = this.replies.length > 0 && reply.rpid === this.replies[this.replies.length - 1].rpid
+    // 最后一条预留悬浮翻页/发送按钮的高度，避免被遮挡
+    const baseHeight = isLast ? 285 : 200
+    const imageExtra = this.ReplyHasImages(reply) ? 62 : 0
+    return (baseHeight + imageExtra) + "px"
   },
   NextPN() {
     if (this.current_pn < this.maxpn) {
@@ -120,6 +388,7 @@ export default {
     }
   },
   async LoadReplies() {
+    const token = ++this.loadToken
     this.replies = []
     this.anims.show_loading = true
     this.anims.loading.start()
@@ -132,21 +401,71 @@ export default {
             this.rootrpid,
             this.current_pn
           )
-        : await global.biliclient.getReplies(this.type, this.oid, this.current_pn)
+        : await global.biliclient.getReplies(
+            this.type,
+            this.oid,
+            this.current_pn,
+            10,
+            this.sortType
+          )
 
-      this.replies = replyData.replies
+      if (token !== this.loadToken) return
+      let replies = replyData && Array.isArray(replyData.replies) ? replyData.replies.slice() : []
+      let topRpid = ""
+      if (!this.secmode) {
+        const upper = replyData && replyData.upper ? replyData.upper : null
+        this.upMid = upper && upper.mid !== undefined && upper.mid !== null
+          ? String(upper.mid)
+          : (this.upmid ? String(this.upmid) : "")
+        const topReply = upper && upper.top ? upper.top : null
+        if (this.current_pn === 1 && topReply && topReply.rpid) {
+          topRpid = String(topReply.rpid)
+          let topIndex = -1
+          for (let i = 0; i < replies.length; i++) {
+            if (String(replies[i].rpid) === topRpid) {
+              topIndex = i
+              break
+            }
+          }
+          if (topIndex === -1) {
+            replies = [topReply].concat(replies)
+          } else if (topIndex > 0) {
+            const top = replies.splice(topIndex, 1)[0]
+            replies = [top].concat(replies)
+          }
+        }
+      } else if (this.upmid) {
+        this.upMid = String(this.upmid)
+      }
+
+      const upMid = this.upMid
+      this.replies = replies.map((reply) => {
+        if (!reply) return reply
+        const senderMid = this.GetReplyMid(reply)
+        return Object.assign({}, reply, {
+          isTop: !!topRpid && String(reply.rpid) === topRpid,
+          isUp: !!upMid && senderMid === upMid
+        })
+      })
     } catch (error) {
+      if (token !== this.loadToken) return
       global.logger.error("加载评论时发生错误:", error)
       prompt.showToast({message: "加载评论失败，请重试。", duration: 4000})
     } finally {
-      this.anims.loading.stop()
-      this.anims.show_loading = false
-      global.runGC()
+      if (token === this.loadToken) {
+        this.anims.loading.stop()
+        this.anims.show_loading = false
+        global.runGC()
+      }
     }
   },
   onInit() {
     this.maxpn = Math.ceil(this.replycount / 10)
     global.logger.log("maxpn=", this.maxpn)
+
+    if (this.upmid) {
+      this.upMid = String(this.upmid)
+    }
 
     global.animengine.defaults.loading.CreateLoadingAnimation(this)
     if (this.secmode) {

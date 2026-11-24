@@ -25,6 +25,11 @@
         <text class="setext_small">{{ $t("settings.startupPage") }}</text>
         <text class="countset_num">{{ startupPage }}</text>
       </div>
+      <div class="setbase" onclick="SwitchSet('enable_comment_images')">
+        <image class="seticon" src="/common/settings_commentimage.png"></image>
+        <text class="setext_small">{{ $t("settings.enableCommentImages") }}</text>
+        <text class="countset_num">{{ enableCommentImages ? "开" : "关" }}</text>
+      </div>
       <div class="setbase" @click="ClearTmp()">
         <image class="seticon" src="/common/settings_removetmp.png"></image>
         <text class="setext_small">{{ $t("settings.clearTemp") }}</text>
@@ -64,6 +69,7 @@ export default {
     fresh_type: 3,
     home_vid_count: 10,
     enableFullAnimation: false,
+    enableCommentImages: true,
     startupPage: "主页",
     countset: {
       fresh_type_max: 3,
@@ -93,7 +99,7 @@ export default {
       uri: "pages/app/features/settings/cleartmp"
     })
   },
-  SwitchSet(name) {
+  async SwitchSet(name) {
     if (name === "enable_full_anim") {
       this.enableFullAnimation = !this.enableFullAnimation;
       this.SaveSettings({ enableFullAnimation: this.enableFullAnimation });
@@ -104,6 +110,11 @@ export default {
           duration: 6000
         });
       }
+      this.UpdateNumView();
+    } else if (name === "enable_comment_images") {
+      const next = !this.enableCommentImages;
+      this.enableCommentImages = next;
+      await this.SaveSettings({ enableCommentImages: next });
       this.UpdateNumView();
     }
   },
@@ -174,6 +185,7 @@ export default {
     this.fresh_type = global.settings.SETTINGS.fresh_type
     this.home_vid_count = global.settings.SETTINGS.home_vid_count
     this.enableFullAnimation = global.settings.SETTINGS.enableFullAnimation
+    this.enableCommentImages = global.settings.SETTINGS.enableCommentImages !== false
     this.startupPage = global.settings.SETTINGS.startupPage
   },
   onInit() {

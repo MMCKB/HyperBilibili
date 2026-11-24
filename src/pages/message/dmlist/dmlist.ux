@@ -3,12 +3,12 @@
 <template>
   <div class="page">
     <scroll scroll-y="true" class="scroll {{scrclass}}" bounces="true">
-      <title-bar title="{{ shareBvid ? '分享给好友' : 'dmlist.title' }}"></title-bar>
+      <title-bar title="{{ shareBvid ? '分享给好友' : 'dmlist.title' }}" back-disabled="{{ sendingShare ? '1' : '' }}"></title-bar>
       
       <image style="position: absolute; margin-top: 245px" if="{{anims.show_loading}}" src="{{anims.loading_src.value}}">
       </image>
       
-      <div class="dmlist" for="{{sessions}}" if="{{show_dmlist}}">
+      <div class="dmlist" for="{{sessions}}" if="{{!shareBvid && show_dmlist}}">
         <div class="user" onclick="GoDMPage($item.talker_id)" onlongpress="LongPressHandle($item.talker_id)">
           <image class="userface" src="{{session_cards[$item.talker_id].face}}@75w_75h" alt="/common/fullgray.png"></image>
           <div class="infoarea">
@@ -26,12 +26,37 @@
         </div>
       </div>
       
-      <text style.static="font-size: 18px; margin-top: 15px; font-weight: 600" show="{{Show20UserLimit}}">
+      <text style.static="font-size: 18px; margin-top: 15px; font-weight: 600" show="{{!shareBvid && Show20UserLimit}}">
         {{ $t("dmlist.userCountLimit") }}
       </text>
 
+      <div class="friend-grid" if="{{shareBvid && friendsLoaded && !shareEmpty}}">
+        <div class="friend-col">
+          <div class="friend-cell {{$item.selected ? 'friend-cell-selected' : ''}}" for="{{friendCol1}}" @click="ToggleFriend($item.uid)">
+            <image class="friend-avatar" src="{{$item.face}}" alt="/common/fullgray.png"></image>
+            <text class="friend-name">{{$item.name}}</text>
+            <text class="friend-check" if="{{$item.selected}}">✓</text>
+          </div>
+        </div>
+        <div class="friend-col">
+          <div class="friend-cell {{$item.selected ? 'friend-cell-selected' : ''}}" for="{{friendCol2}}" @click="ToggleFriend($item.uid)">
+            <image class="friend-avatar" src="{{$item.face}}" alt="/common/fullgray.png"></image>
+            <text class="friend-name">{{$item.name}}</text>
+            <text class="friend-check" if="{{$item.selected}}">✓</text>
+          </div>
+        </div>
+      </div>
+
+      <text class="friend-empty" if="{{shareBvid && friendsLoaded && shareEmpty}}" @click="RetryLoad">{{ friendsLoadFailed ? '加载好友失败，点击重试' : '暂无可分享的好友' }}</text>
+      <text class="share-bottom-space" if="{{shareBvid}}"></text>
+
       <text style="margin-top: 25px" static></text>
     </scroll>
+    <div class="share-footer" if="{{shareBvid}}">
+      <div class="share-confirm {{ shareConfirmEnabled ? 'share-confirm-on' : '' }}" @click="ConfirmShare">
+        <text class="share-confirm-text {{ shareConfirmEnabled ? 'share-confirm-text-on' : '' }}">{{ shareConfirmLabel }}</text>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -51,10 +76,34 @@ export default {
     show_dmlist: false,
     Show20UserLimit: false,
     sharing: false,
+    friendsLoaded: false,
+    friendsLoadFailed: false,
+    shareFriends: [],
+    friendCol1: [],
+    friendCol2: [],
+    shareEmpty: true,
+    selectedCount: 0,
+    sendingShare: false,
+    shareSendDone: 0,
+    shareSendTotal: 0,
     anims: {
       show_loading: false
     },
     scrclass: ""
+  },
+  computed: {
+    shareConfirmEnabled() {
+      return this.friendsLoaded && this.selectedCount > 0
+    },
+    shareConfirmLabel() {
+      if (!this.friendsLoaded) {
+        return "加载中…"
+      }
+      if (this.sendingShare) {
+        return `发送中 ${this.shareSendDone}/${this.shareSendTotal}…`
+      }
+      return this.selectedCount > 0 ? `确定（${this.selectedCount}）` : "确定"
+    }
   },
   async LongPressHandle(id) {
     if (this.shareBvid) return
@@ -78,12 +127,19 @@ export default {
     this.InitSessions()
   },
   async InitSessions() {
+    this.friendsLoaded = false
+    this.friendsLoadFailed = false
+    this.shareEmpty = true
+    this.selectedCount = 0
     try {
       this.anims.loading.start()
       this.anims.show_loading = true
 
       const dmData = await global.biliclient.getDMSessions(1, 2)
-      let sessionsData = dmData.session_list.slice(0, 10)
+      if (!dmData || !Array.isArray(dmData.session_list)) {
+        throw new Error("getDMSessions returned no session_list")
+      }
+      let sessionsData = dmData.session_list.slice(0, this.shareBvid ? 20 : 10)
 
       let session_uids = []
       let filteredSessions = []
@@ -109,15 +165,221 @@ export default {
 
       this.sessions.splice(0, this.sessions.length, ...combinedSessions)
 
-      this.session_cards = await global.biliclient.getMultiUserInfoByUID(session_uids)
+      let cards = {}
+      if (session_uids.length) {
+        try {
+          cards = (await global.biliclient.getMultiUserInfoByUID(session_uids)) || {}
+        } catch (cardErr) {
+          global.logger.error("[InitSessions] 获取用户卡片失败：", cardErr)
+          if (!this.shareBvid) {
+            throw cardErr
+          }
+        }
+      }
+      this.session_cards = cards
 
-      this.anims.loading.stop()
-      this.anims.show_loading = false
+      if (this.shareBvid) {
+        this.BuildFriends(global.settings.SETTINGS.pinnedDMUsers, filteredSessions, cards)
+        this.friendsLoaded = true
+      }
+
       this.Show20UserLimit = true
       this.show_dmlist = true
     } catch (e) {
       global.logger.error(e.toString())
+      if (this.shareBvid) {
+        this.friendsLoaded = true
+        this.friendsLoadFailed = true
+        this.shareEmpty = true
+      }
+    } finally {
+      try {
+        if (this.anims && this.anims.loading) {
+          this.anims.loading.stop()
+        }
+      } catch (err) {}
+      if (this.anims) {
+        this.anims.show_loading = false
+      }
     }
+  },
+  BuildFriends(pinnedUids, sessions, cards) {
+    const seen = {}
+    const list = []
+    const add = (rawUid) => {
+      const uid = String(rawUid === null || rawUid === undefined ? "" : rawUid)
+      if (!uid || uid === "0" || uid === "undefined" || uid === "null" || seen[uid]) {
+        return
+      }
+      seen[uid] = true
+      const card = (cards && cards[uid]) || {}
+      let face = card.face || ""
+      if (face.indexOf("http:") === 0) {
+        face = "https:" + face.slice(5)
+      }
+      if (face && face.indexOf("@") < 0) {
+        face += "@96w_96h"
+      }
+      if (!face) {
+        face = "/common/fullgray.png"
+      }
+      list.push({
+        uid,
+        name: card.name || ("用户" + uid),
+        face,
+        selected: false
+      })
+    }
+
+    const pinnedList = pinnedUids || []
+    pinnedList.forEach(uid => add(uid))
+    const sessionList = sessions || []
+    sessionList.forEach(session => add(session.talker_id))
+
+    this.shareFriends = list
+    this.shareEmpty = list.length === 0
+    this.selectedCount = 0
+    this.SplitFriends()
+  },
+  SplitFriends() {
+    const col1 = []
+    const col2 = []
+    this.shareFriends.forEach((friend, index) => {
+      if (index % 2 === 0) {
+        col1.push(friend)
+      } else {
+        col2.push(friend)
+      }
+    })
+    this.friendCol1 = col1
+    this.friendCol2 = col2
+  },
+  ToggleFriend(rawUid) {
+    if (this.sendingShare || !this.friendsLoaded) {
+      return
+    }
+    const uid = String(rawUid || "")
+    if (!uid) {
+      return
+    }
+    this.shareFriends = this.shareFriends.map(friend => {
+      if (friend.uid === uid) {
+        return Object.assign({}, friend, { selected: !friend.selected })
+      }
+      return friend
+    })
+    this.SplitFriends()
+    this.selectedCount = this.shareFriends.filter(friend => friend.selected).length
+  },
+  RetryLoad() {
+    if (this.sendingShare) {
+      return
+    }
+    this.friendsLoaded = false
+    this.friendsLoadFailed = false
+    this.shareEmpty = true
+    this.shareFriends = []
+    this.friendCol1 = []
+    this.friendCol2 = []
+    this.selectedCount = 0
+    this.InitSessions()
+  },
+  Delay(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms))
+  },
+  IsStopSendError(result) {
+    if (!result) {
+      return false
+    }
+    const code = Number(result.code)
+    const message = String(result.message || "")
+    return code === -352 || code === -412 || message.indexOf("频繁") >= 0 ||
+      message.indexOf("风控") >= 0 || message.indexOf("稍后再试") >= 0
+  },
+  async ConfirmShare() {
+    if (this.sendingShare || !this.shareBvid || !this.friendsLoaded) {
+      return
+    }
+    const targets = this.shareFriends.filter(friend => friend.selected)
+    if (targets.length === 0) {
+      prompt.showToast({ message: "请先选择好友" })
+      return
+    }
+
+    this.sendingShare = true
+    this.shareSendDone = 0
+    this.shareSendTotal = targets.length
+
+    const message = String(this.shareMessage || "").trim()
+    const text = `${message ? message + "\n" : ""}分享视频：${this.shareTitle || this.shareBvid}\nhttps://www.bilibili.com/video/${this.shareBvid}`
+    const succeeded = {}
+    let ok = 0
+    let attempted = 0
+    let lastError = ""
+
+    for (let i = 0; i < targets.length; i++) {
+      let result = null
+      try {
+        result = await global.biliclient.SendDMSessionMessage(targets[i].uid, 1, text)
+      } catch (e) {
+        global.logger.error("分享给好友失败: ", targets[i].uid, e)
+        result = null
+      }
+      attempted++
+      this.shareSendDone = i + 1
+
+      if (result && Number(result.code) === 0) {
+        ok++
+        succeeded[targets[i].uid] = true
+      } else {
+        lastError = result ? `${result.code} ${result.message || ""}`.trim() : "网络异常"
+        if (this.IsStopSendError(result)) {
+          break
+        }
+      }
+
+      if (i < targets.length - 1) {
+        await this.Delay(350)
+      }
+    }
+
+    if (ok === targets.length) {
+      prompt.showToast({ message: `已分享给 ${ok} 位好友` })
+      setTimeout(() => {
+        if (global.ui && global.ui.OnBackPressTriggered) {
+          global.ui.OnBackPressTriggered()
+        } else {
+          router.back()
+        }
+      }, 500)
+      return
+    }
+
+    this.shareFriends = this.shareFriends.map(friend => {
+      if (succeeded[friend.uid]) {
+        return Object.assign({}, friend, { selected: false })
+      }
+      return friend
+    })
+    this.SplitFriends()
+    this.selectedCount = this.shareFriends.filter(friend => friend.selected).length
+    this.sendingShare = false
+
+    const failed = attempted - ok
+    const unsent = targets.length - attempted
+    let resultMessage = ""
+    if (ok > 0) {
+      resultMessage = `已分享 ${ok} 位`
+      if (failed > 0) {
+        resultMessage += `，${failed} 位失败`
+      }
+      if (unsent > 0) {
+        resultMessage += `，${unsent} 位未发送`
+      }
+    } else {
+      resultMessage = lastError || "分享失败，请重试"
+    }
+    prompt.showToast({ message: resultMessage, duration: 3000 })
   },
   GoDMPage(targetId) {
     if (this.shareBvid) {

@@ -8,7 +8,7 @@
         <div class="dataicon" style="margin-left: 25px">
           <image class="toolicon" src="/common/replytools_like.png"></image>
         </div>
-        <text class="toolname" style="margin-left: 92px; position: absolute">{{ $t("replytools.like") }}</text>
+        <text class="toolname" style="margin-left: 92px; position: absolute">{{ replyLiked ? $t("replytools.unlike") : $t("replytools.like") }}</text>
       </div>
       <div class="toolbtn" style="margin-top: 10px" @click="ShowSecReplies()">
         <div class="dataicon" style="margin-left: 25px">
@@ -29,34 +29,55 @@
 <script>
 import router from "@system.router"
 import prompt from "@system.prompt"
+import { CleanCommentMessage } from "@src/commentimages.ts"
 export default {
   public: {
     type: 0,
     oid: "",
-    reply: null
+    reply: null,
+    upmid: ""
   },
   private: {
     replymessage: "",
     reply_clone: null,
+    replyLiked: false,
+    likePending: false,
     scrclass: ""
   },
   async LikeReply() {
-    var result = await global.biliclient.LikeReply(
-      this.type,
-      this.oid,
-      this.reply_clone.rpid,
-      1
-    )
-    global.logger.log(result)
-    if (result.code == 0) {
-      prompt.showToast({
-        message: "点赞成功！"
-      })
-    } else {
-      prompt.showToast({
-        message: "点赞失败...错误代码：" + result.code + " 报错信息：" + result.message,
-        duration: 4000
-      })
+    if (this.likePending || !this.reply_clone) return
+    this.likePending = true
+    const wasLiked = this.replyLiked
+    const action = wasLiked ? 0 : 1
+    try {
+      const result = await global.biliclient.LikeReply(
+        this.type,
+        this.oid,
+        this.reply_clone.rpid,
+        action
+      )
+      global.logger.log(result)
+      if (result && result.code == 0) {
+        this.replyLiked = !wasLiked
+        this.reply_clone.action = action
+        const likeCount = Number(this.reply_clone.like) || 0
+        this.reply_clone.like = Math.max(0, likeCount + (this.replyLiked ? 1 : -1))
+        prompt.showToast({
+          message: this.replyLiked ? "点赞成功！" : "已取消赞"
+        })
+      } else {
+        prompt.showToast({
+          message: result
+            ? "点赞失败...错误代码：" + result.code + " 报错信息：" + result.message
+            : "点赞失败，请重试",
+          duration: 4000
+        })
+      }
+    } catch (e) {
+      global.logger.error("点赞评论失败: ", e)
+      prompt.showToast({message: "点赞失败，请重试", duration: 3000})
+    } finally {
+      this.likePending = false
     }
   },
   ShowDetail() {
@@ -76,6 +97,7 @@ export default {
           oid: this.oid,
           replycount: this.reply_clone.rcount,
           rootrpid: this.reply_clone.rpid,
+          upmid: this.upmid || "",
           secmode: true
         }
       })
@@ -91,8 +113,9 @@ export default {
     if (typeof this.reply === "string") {
       this.reply = JSON.parse(this.reply)
     }
-    this.replymessage = this.reply.content.message
+    this.replymessage = CleanCommentMessage(this.reply.content.message)
     this.reply_clone = this.reply // 对reply进行一个克隆，防止router back后被GC清理
+    this.replyLiked = Number(this.reply_clone.action) === 1
   }
 }
 </script>

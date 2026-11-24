@@ -1,8 +1,213 @@
 .replylist {
     width: 77%;
-    height: 79%;
+    height: 92%;
     align-items: center;
     justify-content: center;
+}
+
+.sortlist {
+    width: 100%;
+    flex-direction: column;
+    align-items: center;
+    margin-bottom: 6px;
+}
+
+.sortoption {
+    width: 100%;
+    height: 58px;
+    margin-top: 8px;
+    border-radius: 16px;
+    background-color: #3a3a3a;
+    align-items: center;
+    justify-content: center;
+}
+
+.sortoption-active {
+    background-color: #ff7da8;
+}
+
+.sortoption-text {
+    font-size: 22px;
+    font-weight: 600;
+    color: #ffffff;
+}
+
+.sortoption-text-active {
+    color: #262626;
+}
+
+.replymenu-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.7);
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    z-index: 40;
+}
+
+.replymenu-card {
+    width: 340px;
+    padding: 20px;
+    border-radius: 16px;
+    background-color: #2a2a2a;
+    flex-direction: column;
+    align-items: center;
+}
+
+.replymenu-card-actions {
+    height: 300px;
+}
+
+.replymenu-card-delete {
+    height: 300px;
+}
+
+.replymenu-card-sort {
+    height: 360px;
+}
+
+.replymenu-title {
+    width: 100%;
+    height: 36px;
+    font-size: 22px;
+    font-weight: 700;
+    color: #ffffff;
+}
+
+.replymenu-excerpt {
+    width: 100%;
+    height: 36px;
+    margin-bottom: 8px;
+    font-size: 16px;
+    font-weight: 600;
+    color: #9e9e9e;
+    lines: 1;
+    text-overflow: ellipsis;
+}
+
+.replymenu-option {
+    width: 100%;
+    height: 58px;
+    margin-top: 8px;
+    border-radius: 16px;
+    background-color: #3a3a3a;
+    align-items: center;
+    justify-content: center;
+}
+
+.replymenu-option-text {
+    font-size: 22px;
+    font-weight: 600;
+    color: #ffffff;
+}
+
+.replymenu-actions {
+    width: 100%;
+    flex-direction: row;
+    justify-content: space-around;
+    align-items: center;
+}
+
+.replymenu-action {
+    width: 140px;
+    height: 110px;
+    border-radius: 18px;
+    background-color: #3a3a3a;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+.replymenu-action-icon {
+    width: 40px;
+    height: 40px;
+    object-fit: contain;
+}
+
+.replymenu-action-icon-warn {
+    width: 46px;
+    height: 40px;
+}
+
+.replymenu-action-text {
+    margin-top: 8px;
+    font-size: 21px;
+    font-weight: 600;
+    color: #ff7da8;
+}
+
+.replymenu-tip {
+    width: 100%;
+    height: 70px;
+    font-size: 19px;
+    font-weight: 600;
+    color: #d7d7df;
+}
+
+.replymenu-buttons {
+    width: 100%;
+    margin-top: 10px;
+    padding-left: 17px;
+    padding-right: 17px;
+    flex-direction: row;
+    justify-content: space-between;
+}
+
+.replymenu-btn {
+    width: 126px;
+    height: 50px;
+    border-radius: 25px;
+    background-color: #34343b;
+    align-items: center;
+    justify-content: center;
+}
+
+.replymenu-btn-danger {
+    background-color: #ff7da8;
+}
+
+.replymenu-btn-pending {
+    opacity: 0.72;
+}
+
+.replymenu-btn-text {
+    font-size: 21px;
+    font-weight: 600;
+    color: #ffffff;
+}
+
+@keyframes dialog-fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes dialog-panel-in {
+    from { transform: translateY(26px) scale(0.97); }
+    to { transform: translateY(0px) scale(1); }
+}
+
+.modal-entering {
+    animation-name: dialog-fade-in;
+    animation-duration: 180ms;
+    animation-timing-function: ease;
+}
+
+.modal-panel-entering {
+    animation-name: dialog-panel-in;
+    animation-duration: 220ms;
+    animation-timing-function: ease;
+}
+
+.replymenu-overlay {
+    transition: opacity 150ms ease;
+}
+
+.modal-closing {
+    opacity: 0;
 }
 
 .inputpanel {

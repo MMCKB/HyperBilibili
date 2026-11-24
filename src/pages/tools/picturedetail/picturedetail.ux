@@ -1,136 +1,527 @@
 <import name="title-bar" src="@components/TitleBar/TitleBar.ux"></import>
 
 <template>
-    <div class="page">
-      <text style="margin-top: 233px" if="ShowBigPictureTips">{{ $t("picturedetail.bigImageTip") }}</text>
-      <scroll class="scroll {{scrclass}}" scroll-x="true" scroll-y="true" @scroll="onScroll" bounces="true" id="scroll">
-          <div style="{{container_style}}">
-            <image style="{{img_style}}" src="{{img_uri}}" id="img"></image>
-          </div>
-      </scroll>
-      <title-bar title="图片预览"></title-bar>
-      <div class="scroll_toolbar">
-          <text style="font-size: 24px; font-weight: 600">{{ $t("picturedetail.scaleTip") }}</text>
-          <slider style="margin-top: 5px" min="50" max="500" step="10" value="{{initialSliderValue}}"
-              @change="UpdateImageStyle"></slider>
+  <div class="page card-enter {{scrclass}}">
+    <title-bar title="图片预览" disable-swipe-back="{{true}}"></title-bar>
+
+    <scroll id="photoScroll" class="photo-scroll" scroll-x="true" scroll-y="true" @scroll="onScroll" style="{{viewport_style}}">
+      <div class="photo-stage" style="{{container_style}}">
+        <image style="{{img_style}}" src="{{current_uri}}" alt="blank"
+          @complete="OnImageComplete" @error="OnImageError"></image>
+      </div>
+    </scroll>
+
+    <div class="viewer-error" if="{{load_error}}">
+      <text class="viewer-error-text">图片加载失败</text>
+    </div>
+
+    <div class="viewer-dock" style="{{dock_style}}">
+      <div class="dock-gallery" if="{{gallery.length > 1}}">
+        <div class="dock-btn" @click="PrevImage">
+          <image class="dock-arrow" src="/common/gallery_prev.png"></image>
+        </div>
+        <text class="dock-count">{{ current_index + 1 }} / {{ gallery.length }}</text>
+        <div class="dock-btn" @click="NextImage">
+          <image class="dock-arrow" src="/common/gallery_next.png"></image>
+        </div>
+      </div>
+      <div class="dock-zoomslider">
+        <text class="dock-zoomcaption" @click="ResetZoom">{{ zoom_label }}</text>
+        <slider class="dock-slider" min="50" max="500" step="10" value="{{zoom_percent}}"
+          @change="OnZoomChange"></slider>
       </div>
     </div>
+  </div>
 </template>
 
 <script>
-import device from "@system.device"
+import { NormalizeViewerImageUrl, ViewerRetryImageUrl } from "@src/commentimages.ts"
+
 export default {
   public: {
-    img_uri: "/common/logo.png"
+    img_uri: "/common/logo.png",
+    img_uris: "",
+    img_meta: "",
+    start_index: 0
   },
   private: {
-    base_width: 0,
-    base_height: 0,
-    ShowBigPictureTips: false,
+    deviceInfo: {
+      screenWidth: 432,
+      screenHeight: 514
+    },
+    viewport_width: 432,
+    viewport_height: 402,
+    viewport_style: {
+      "position": "absolute",
+      "left": "0px",
+      "top": "56px",
+      "width": "100%",
+      "height": "402px"
+    },
+    dock_style: {
+      "position": "absolute",
+      "left": "140px",
+      "top": "458px",
+      "width": "152px",
+      "height": "44px"
+    },
     img_style: {
       "object-fit": "contain",
-      "position": "absolute"
+      "position": "absolute",
+      "width": "432px",
+      "height": "402px",
+      "left": "0px",
+      "top": "0px"
     },
     container_style: {
       "position": "relative",
-      "width": "100%",
-      "height": "100%"
+      "width": "432px",
+      "height": "402px",
+      "flex-shrink": 0
     },
-    show_toolbar: false,
-    initialSliderValue: 100,
-    deviceInfo: null,
+    gallery: [],
+    image_meta: [],
+    current_index: 0,
+    current_uri: "",
+    source_w: 0,
+    source_h: 0,
+    base_w: 0,
+    base_h: 0,
+    img_w: 0,
+    img_h: 0,
+    img_left: 0,
+    img_top: 0,
+    stage_w: 432,
+    stage_h: 402,
+    zoom_percent: 100,
+    zoom_label: "1.0×",
+    scroll_x: 0,
+    scroll_y: 0,
+    scroll_token: 0,
+    load_error: false,
+    retry_uri: "",
+    retry_count: 0,
     scrclass: ""
   },
-  calculateImagePosition(imageWidth, imageHeight) {
-    const x = (this.deviceInfo.screenWidth - imageWidth) / 2;
-    const y = (this.deviceInfo.screenHeight - imageHeight) / 2;
-    return { x: x, y: y };
-  },
-  UpdateImageStyle(e) {
-    var current_width = this.base_width * (e.progress / 100);
-    var current_height = this.base_height * (e.progress / 100);
-
-    // 更新图片的宽高样式
-    this.img_style["width"] = current_width + "px";
-    this.img_style["height"] = current_height + "px";
-
-    if (current_width <= this.deviceInfo.screenWidth && current_height <= this.deviceInfo.screenHeight) {
-      // 当图片的宽高小于或等于屏幕大小时，手动计算图片的位置以居中显示
-      const pos = this.calculateImagePosition(current_width, current_height);
-      this.img_style["position"] = "absolute";
-      this.img_style["left"] = pos.x + "px";
-      this.img_style["top"] = pos.y + "px";
-    } else {
-      // 当图片大于屏幕大小时，取消居中显示，保持滚动行为
-      this.img_style["position"] = "absolute";
-      this.img_style["left"] = "0";
-      this.img_style["top"] = "0";
-    }
-
-    // 更新容器的宽高以适应缩放后的图片
-    this.container_style["width"] = Math.max(current_width, this.deviceInfo.screenWidth) + "px";
-    this.container_style["height"] = Math.max(current_height, this.deviceInfo.screenHeight) + "px";
-
-    // 如果图像大小超过屏幕大小，设置滚动到中心位置
-    if (current_width > this.deviceInfo.screenWidth || current_height > this.deviceInfo.screenHeight) {
-      let maxScrollX = current_width - this.deviceInfo.screenWidth;
-      let maxScrollY = current_height - this.deviceInfo.screenHeight;
-
-      maxScrollX = maxScrollX < 0 ? 0 : maxScrollX;
-      maxScrollY = maxScrollY < 0 ? 0 : maxScrollY;
-
-      this.$element("scroll").scrollTo({
-        left: maxScrollX / 2,
-        top: maxScrollY / 2
-      });
-    }
-  },
-  onScroll(args) {
-    //global.logger.log(args);
+  onInit() {
+    this.UpdateLayout();
+    this.SetupGallery();
   },
   onReady() {
-    this.$element("img").getBoundingClientRect({
-      success: (rect) => {
-        global.logger.log("image loaded: ", rect);
-        this.base_height = rect.height;
-        this.base_width = rect.width;
-        if(rect.width > 800 && rect.height > 800){
-          this.ShowBigPictureTips = true
-        }
-        setTimeout(() => {
-          this.UpdateImageStyle({
-            progress: this.initialSliderValue
+    this.ComputeBase();
+    this.ApplyView(true);
+  },
+  onDestroy() {
+    this.scroll_token++;
+  },
+  UpdateLayout() {
+    const info = global.DEVICE_INFO || {};
+    const width = Number(info.screenWidth) || 432;
+    const height = Number(info.screenHeight) || 514;
+    this.deviceInfo = {
+      screenWidth: width,
+      screenHeight: height
+    };
+    this.viewport_width = width;
+    this.UpdateDockStyle();
+    if (!this.source_w || !this.source_h) {
+      this.container_style = {
+        "position": "relative",
+        "width": this.viewport_width + "px",
+        "height": this.viewport_height + "px",
+        "flex-shrink": 0
+      };
+      this.img_style = {
+        "object-fit": "contain",
+        "position": "absolute",
+        "width": this.viewport_width + "px",
+        "height": this.viewport_height + "px",
+        "left": "0px",
+        "top": "0px"
+      };
+    }
+    this.UpdateDockStyle();
+  },
+  UpdateDockStyle() {
+    const width = this.deviceInfo.screenWidth;
+    const height = this.deviceInfo.screenHeight;
+    const hasGallery = this.gallery.length > 1;
+    const dockHeight = hasGallery ? 88 : 60;
+    const dockTop = height - dockHeight - 12;
+    this.viewport_height = dockTop - 56;
+    this.viewport_style = {
+      "position": "absolute",
+      "left": "0px",
+      "top": "56px",
+      "width": "100%",
+      "height": this.viewport_height + "px"
+    };
+    this.dock_style = {
+      "position": "absolute",
+      "left": ((width - 322) / 2) + "px",
+      "top": dockTop + "px",
+      "width": "322px",
+      "height": dockHeight + "px"
+    };
+  },
+  ParseList(raw) {
+    if (Array.isArray(raw)) {
+      return raw;
+    }
+    if (typeof raw !== "string" || !raw) {
+      return [];
+    }
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (e) {
+      return [];
+    }
+  },
+  SetupGallery() {
+    let rawUrls = this.ParseList(this.img_uris).filter(url => typeof url === "string" && url);
+    if (!rawUrls.length) {
+      rawUrls = [this.img_uri || "/common/logo.png"];
+    }
+    const rawMeta = this.ParseList(this.img_meta);
+    const urls = [];
+    const metas = [];
+    const sourceIndices = [];
+    for (let i = 0; i < rawUrls.length; i++) {
+      const url = NormalizeViewerImageUrl(rawUrls[i]);
+      if (!url) {
+        continue;
+      }
+      const item = rawMeta[i] || {};
+      urls.push(url);
+      metas.push({
+        w: Number(item.w || item.width) || 0,
+        h: Number(item.h || item.height) || 0
+      });
+      sourceIndices.push(i);
+    }
+    if (!urls.length) {
+      const fallback = NormalizeViewerImageUrl("/common/logo.png");
+      if (fallback) {
+        urls.push(fallback);
+        metas.push({ w: 0, h: 0 });
+        sourceIndices.push(0);
+      }
+    }
+    this.gallery = urls;
+    this.image_meta = metas;
+    let start = Number(this.start_index);
+    if (isNaN(start)) {
+      start = 0;
+    }
+    start = Math.floor(start);
+    let target = 0;
+    for (let i = 0; i < sourceIndices.length; i++) {
+      if (sourceIndices[i] === start) {
+        target = i;
+        break;
+      }
+    }
+    this.current_index = target;
+    this.current_uri = urls[target] || "";
+    this.retry_uri = urls[target] ? ViewerRetryImageUrl(urls[target]) : "";
+    this.retry_count = 0;
+    this.load_error = !urls.length;
+    this.source_w = metas[target] ? metas[target].w : 0;
+    this.source_h = metas[target] ? metas[target].h : 0;
+    this.zoom_percent = 100;
+    this.zoom_label = "1.0×";
+    this.UpdateDockStyle();
+    this.ComputeBase();
+    this.ApplyView(true);
+  },
+  ComputeBase() {
+    if (!this.source_w || !this.source_h) {
+      this.base_w = this.viewport_width;
+      this.base_h = this.viewport_height;
+      return;
+    }
+    const fitW = this.viewport_width / this.source_w;
+    const fitH = this.viewport_height / this.source_h;
+    const fit = Math.min(1, fitW, fitH);
+    this.base_w = this.source_w * fit;
+    this.base_h = this.source_h * fit;
+  },
+  ApplyView(reset, focusX, focusY) {
+    const percent = Number(this.zoom_percent) || 100;
+    const z = Math.max(0.5, Math.min(5, percent / 100));
+    const vw = this.viewport_width;
+    const vh = this.viewport_height;
+    const base_w = this.base_w > 0 ? this.base_w : vw;
+    const base_h = this.base_h > 0 ? this.base_h : vh;
+    const iw = Math.max(1, Math.round(base_w * z));
+    const ih = Math.max(1, Math.round(base_h * z));
+    const stageW = Math.max(vw, iw);
+    const stageH = Math.max(vh, ih);
+    const left = Math.round((stageW - iw) / 2);
+    const top = Math.round((stageH - ih) / 2);
+    const oldScale = this.img_w > 0 && this.base_w > 0 ? this.img_w / this.base_w : 0;
+    let targetX = 0;
+    let targetY = 0;
+    if (!reset && focusX !== undefined && focusX !== null && focusY !== undefined && focusY !== null) {
+      targetX = left + focusX * iw - vw / 2;
+      targetY = top + focusY * ih - vh / 2;
+    } else if (!reset && oldScale > 0) {
+      const cx = (this.scroll_x + vw / 2 - this.img_left) / oldScale;
+      const cy = (this.scroll_y + vh / 2 - this.img_top) / oldScale;
+      targetX = left + cx * z - vw / 2;
+      targetY = top + cy * z - vh / 2;
+    }
+    const maxX = Math.max(0, stageW - vw);
+    const maxY = Math.max(0, stageH - vh);
+    targetX = Math.max(0, Math.min(maxX, Math.round(targetX)));
+    targetY = Math.max(0, Math.min(maxY, Math.round(targetY)));
+
+    if (reset) {
+      const scroll0 = this.$element("photoScroll");
+      if (scroll0) {
+        try {
+          scroll0.scrollTo({
+            left: 0,
+            top: 0,
+            behavior: "instant"
           });
-          this.show_toolbar = true;
-        }, 500);
+        } catch (e) {}
       }
-    });
-    device.getInfo({
-      success: (info) => {
-        global.logger.log(info);
-        this.deviceInfo = info;
+      this.scroll_x = 0;
+      this.scroll_y = 0;
+    }
+
+    this.img_w = iw;
+    this.img_h = ih;
+    this.img_left = left;
+    this.img_top = top;
+    this.stage_w = stageW;
+    this.stage_h = stageH;
+    this.zoom_label = z.toFixed(1) + "×";
+    this.img_style = {
+      "object-fit": "contain",
+      "position": "absolute",
+      "width": iw + "px",
+      "height": ih + "px",
+      "left": left + "px",
+      "top": top + "px"
+    };
+    this.container_style = {
+      "position": "relative",
+      "width": stageW + "px",
+      "height": stageH + "px",
+      "flex-shrink": 0
+    };
+
+    this.scroll_token++;
+    const token = this.scroll_token;
+    const applyScroll = () => {
+      if (token !== this.scroll_token || !this.$valid) {
+        return;
       }
-    });
+      const scroll = this.$element("photoScroll");
+      if (!scroll) {
+        return;
+      }
+      try {
+        scroll.scrollTo({
+          left: targetX,
+          top: targetY,
+          behavior: "instant"
+        });
+        this.scroll_x = targetX;
+        this.scroll_y = targetY;
+      } catch (e) {}
+    };
+    if (this.$nextTick) {
+      this.$nextTick(() => setTimeout(applyScroll, 30));
+    } else {
+      setTimeout(applyScroll, 30);
+    }
+  },
+  onScroll(e) {
+    const x = e && e.scrollX !== undefined ? e.scrollX : e && e.detail ? e.detail.scrollX : 0;
+    const y = e && e.scrollY !== undefined ? e.scrollY : e && e.detail ? e.detail.scrollY : 0;
+    this.scroll_x = Number(x) || 0;
+    this.scroll_y = Number(y) || 0;
+  },
+  OnImageComplete(e) {
+    const detail = e && e.detail ? e.detail : e;
+    const width = Number(detail && detail.width) || 0;
+    const height = Number(detail && detail.height) || 0;
+    if (width > 0 && height > 0 && (!this.source_w || !this.source_h)) {
+      if (this.gallery.length > 1) {
+        // 多图时 complete 事件无法区分是哪一张，不采用尺寸，避免旧图事件污染新图
+        this.load_error = false;
+        return;
+      }
+      let fx = 0.5;
+      let fy = 0.5;
+      if (this.img_w > 0 && this.img_h > 0) {
+        fx = (this.scroll_x + this.viewport_width / 2 - this.img_left) / this.img_w;
+        fy = (this.scroll_y + this.viewport_height / 2 - this.img_top) / this.img_h;
+      }
+      this.source_w = width;
+      this.source_h = height;
+      this.ComputeBase();
+      this.ApplyView(false, fx, fy);
+    }
+    this.load_error = false;
+    this.retry_count = 0;
+  },
+  OnImageError() {
+    if (this.gallery.length === 1) {
+      if (this.retry_uri && this.retry_uri !== this.current_uri && this.retry_count < 1) {
+        this.retry_count++;
+        this.current_uri = this.retry_uri;
+        this.load_error = false;
+        return;
+      }
+      this.load_error = true;
+    }
+  },
+  ShowImageAt(index) {
+    if (!this.gallery.length) {
+      return;
+    }
+    this.current_index = index;
+    this.current_uri = this.gallery[index];
+    this.retry_uri = ViewerRetryImageUrl(this.gallery[index]);
+    this.retry_count = 0;
+    const meta = this.image_meta[index] || {};
+    this.source_w = meta.w || 0;
+    this.source_h = meta.h || 0;
+    this.zoom_percent = 100;
+    this.load_error = false;
+    this.ComputeBase();
+    this.ApplyView(true);
+  },
+  PrevImage() {
+    if (this.gallery.length < 2) {
+      return;
+    }
+    this.ShowImageAt((this.current_index - 1 + this.gallery.length) % this.gallery.length);
+  },
+  NextImage() {
+    if (this.gallery.length < 2) {
+      return;
+    }
+    this.ShowImageAt((this.current_index + 1) % this.gallery.length);
+  },
+  OnZoomChange(e) {
+    const raw = e && e.progress !== undefined ? e.progress : e && e.detail ? e.detail.progress : e;
+    const progress = Number(raw);
+    if (!isFinite(progress)) {
+      return;
+    }
+    this.zoom_percent = Math.max(50, Math.min(500, progress));
+    this.ApplyView(false);
+  },
+  ResetZoom() {
+    this.zoom_percent = 100;
+    this.ApplyView(true);
   }
 }
-
 </script>
 
 <style lang="less">
 @import '@less/global.less';
 
-.scroll {
-  height: 100%;
-  position: absolute;
-  width: 100%;
+.page {
+  background-color: #000;
 }
 
-.scroll_toolbar {
-  position: absolute;
-  bottom: 35px;
+.photo-scroll {
+  display: flex;
   flex-direction: column;
-  justify-content: center;
+  align-items: flex-start;
+  justify-content: flex-start;
+  position: absolute;
+  padding: 0;
+}
+
+.photo-stage {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.viewer-dock {
+  position: absolute;
+  flex-direction: column;
   align-items: center;
-  height: 100px;
+  justify-content: center;
+  background-color: #262626;
+  border-radius: 22px;
+}
+
+.dock-gallery {
+  width: 148px;
+  height: 44px;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+}
+
+.dock-btn {
+  width: 44px;
+  height: 44px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 22px;
+}
+
+.dock-arrow {
+  width: 16px;
+  height: 26px;
+  object-fit: contain;
+}
+
+.dock-count {
+  width: 60px;
+  text-align: center;
+  font-size: 24px;
+  font-weight: 600;
+  color: #ff7da8;
+}
+
+.dock-zoomslider {
+  width: 100%;
+  height: 44px;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+}
+
+.dock-zoomcaption {
+  width: 60px;
+  text-align: center;
+  font-size: 24px;
+  font-weight: 600;
+  color: #ff7da8;
+}
+
+.dock-slider {
+  width: 220px;
+  height: 44px;
+}
+
+.viewer-error {
+  position: absolute;
+  left: 55px;
+  top: 200px;
+  width: 322px;
+  height: 72px;
+  border-radius: 20px;
+  background-color: #262626;
+  align-items: center;
+  justify-content: center;
+}
+
+.viewer-error-text {
+  font-size: 24px;
+  font-weight: 600;
+  color: #ff7da8;
+  text-align: center;
 }
 </style>

@@ -17,17 +17,23 @@
                 <image src="/common/changepage_right.png"></image>
             </div>
         </div>
+        <div class="pagechanger-send" if="{{showSend}}" @click="SendComment">
+            <image class="pagechanger-send-img" src="/common/replycontrol_reply.png"></image>
+        </div>
     </div>
 </template>
 
 <script>
 export default {
-  props: ["current_pn"],
+  props: ["current_pn", "showSend"],
   BackPN() {
     this.$emit("backpn")
   },
   NextPN() {
     this.$emit("nextpn")
+  },
+  SendComment() {
+    this.$emit("sendComment")
   }
 }
 </script>
@@ -41,10 +47,26 @@ export default {
   background-color: rgba(0, 0, 0, 0.8);
   border-radius: 20px;
   padding: 5px 10px;
+  flex-direction: row;
+  align-items: center;
 }
 
 .pagechanger {
   flex-direction: row;
   align-items: center;
+}
+
+.pagechanger-send {
+  width: 36px;
+  height: 40px;
+  margin-left: 12px;
+  align-items: center;
+  justify-content: center;
+}
+
+.pagechanger-send-img {
+  width: 26px;
+  height: 26px;
+  object-fit: contain;
 }
 </style>

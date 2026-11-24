@@ -1,0 +1,148 @@
+<import name="title-bar" src="@components/TitleBar/TitleBar.ux"></import>
+
+<template>
+  <div class="page">
+    <scroll scroll-y="true" class="scroll {{scrclass}}" bounces="true">
+      <title-bar title="{{titletext}}"></title-bar>
+      <div class="seasonhead" if="{{loaded}}">
+        <text class="seasonhead-title">{{ seasonTitle }}</text>
+        <text class="seasonhead-sub">共 {{ epCount }} 集</text>
+      </div>
+      <div class="seasonitem" for="{{items}}">
+        <text class="sectiontitle" if="{{$item.kind === 'section'}}">{{ $item.title }}</text>
+        <div class="eprow {{ $item.current ? 'eprow-current' : '' }}" if="{{$item.kind === 'ep'}}" @click="OpenEpisode($item)">
+          <image class="epcover" src="{{ $item.thumb }}" alt="/common/fullgray.png"></image>
+          <div class="epinfo">
+            <text class="eptitle">{{ $item.title }}</text>
+            <text class="epsub">{{ $item.meta }}</text>
+          </div>
+        </div>
+      </div>
+      <text style="margin-top: 30px"></text>
+      <image style="position: absolute; margin-top: 245px" if="{{anims.show_loading}}" src="{{anims.loading_src.value}}"></image>
+    </scroll>
+  </div>
+</template>
+
+<script>
+import router from "@system.router"
+import prompt from "@system.prompt"
+
+export default {
+  public: {
+    bvid: ""
+  },
+  private: {
+    titletext: "合集",
+    loaded: false,
+    seasonTitle: "",
+    epCount: 0,
+    items: [],
+    scrclass: "",
+    anims: {
+      show_loading: false
+    }
+  },
+  formatDuration(seconds) {
+    const total = Math.max(0, Math.floor(Number(seconds) || 0))
+    const minutes = Math.floor(total / 60)
+    const rest = total % 60
+    return `${minutes}:${rest < 10 ? "0" : ""}${rest}`
+  },
+  formatViews(view) {
+    if (!view) return ""
+    return this.$app.$def.tools.formatNumber(view) + "播放"
+  },
+  OpenEpisode(item) {
+    if (!item || item.kind !== "ep") return
+    if (item.current) {
+      router.back()
+      return
+    }
+    if (!item.bvid) {
+      prompt.showToast({message: "该集暂时无法打开"})
+      return
+    }
+    router.replace({
+      uri: "pages/video/videodetail",
+      params: {bvid: item.bvid}
+    })
+  },
+  async LoadSeason() {
+    this.anims.show_loading = true
+    global.animengine.defaults.loading.CreateLoadingAnimation(this)
+    this.anims.loading.start()
+    try {
+      const vid = await global.biliclient.getVideoInfoByBVID(this.bvid)
+      const season = vid && vid.ugc_season
+      if (!season || !Array.isArray(season.sections)) {
+        prompt.showToast({message: "该视频不在合集中"})
+        router.back()
+        return
+      }
+      this.seasonTitle = season.title || "合集"
+      const items = []
+      let epIndex = 0
+      const showSectionTitle = season.sections.length > 1
+      for (let i = 0; i < season.sections.length; i++) {
+        const section = season.sections[i] || {}
+        const episodes = Array.isArray(section.episodes) ? section.episodes : []
+        if (episodes.length === 0) continue
+        if (showSectionTitle) {
+          items.push({
+            kind: "section",
+            title: section.title || "分部"
+          })
+        }
+        for (let j = 0; j < episodes.length; j++) {
+          const episode = episodes[j] || {}
+          const arc = episode.arc || {}
+          const epBvid = arc.bvid || episode.bvid || ""
+          epIndex++
+          const isCurrent = !!epBvid && epBvid === this.bvid
+          const metaParts = []
+          const duration = this.formatDuration(arc.duration || episode.duration)
+          if (duration !== "0:00") metaParts.push(duration)
+          const views = this.formatViews(arc.stat ? arc.stat.view : 0)
+          if (views) metaParts.push(views)
+          let cover = arc.pic || ""
+          if (cover.indexOf("http://") === 0) {
+            cover = "https://" + cover.slice(7)
+          }
+          items.push({
+            kind: "ep",
+            bvid: epBvid,
+            title: episode.title || arc.title || "未命名",
+            thumb: cover ? cover + "@224w_126h" : "/common/fullgray.png",
+            meta: metaParts.join(" · "),
+            current: isCurrent
+          })
+        }
+      }
+      this.epCount = epIndex
+      this.items = items
+      this.loaded = true
+    } catch (e) {
+      global.logger.error("[season] load failed: ", e)
+      prompt.showToast({message: "加载合集失败，请重试", duration: 3000})
+    } finally {
+      this.anims.loading.stop()
+      this.anims.show_loading = false
+      global.runGC()
+    }
+  },
+  onBackPress() {
+    global.ui.OnBackPressTriggered()
+    return true
+  },
+  onInit() {
+    global.logger.log("[season] load bvid: " + this.bvid)
+    this.LoadSeason()
+  }
+}
+</script>
+
+<style lang="less">
+@import "@less/global.less";
+@import "./season.less";
+</style>

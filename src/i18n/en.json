@@ -83,8 +83,16 @@
     "replytools": {
         "title": "Comments",
         "like": "Like this comment",
+        "unlike": "Unlike this comment",
         "showReply": "View Replies",
         "showDetail": "View Details"
+    },
+    "reportreply": {
+        "title": "Report Comment",
+        "submit": "Submit Report"
+    },
+    "replys": {
+        "sort": "Sort"
     },
     "savedcontent": {
         "title": "Saved Content"
@@ -107,7 +115,8 @@
         "manifest": "Video List",
         "showLater": "Watch Later",
         "showOnPhone": "Watch on Phone",
-        "sendReply": "Send Comment"
+        "sendReply": "Send Comment",
+        "season": "View Collection"
     },
     "settings": {
         "title": "Settings",
@@ -115,6 +124,7 @@
         "videoPushCount": "Number of Recommended Videos on Homepage",
         "enableFullAnimation": "Enable Full Animation",
         "startupPage": "Startup Page",
+        "enableCommentImages": "Show Images",
         "clearTemp": "Clear Cache",
         "logOut": "Log Out",
         "donation": "Donate",
