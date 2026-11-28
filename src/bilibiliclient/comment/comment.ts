@@ -21,6 +21,15 @@ export const BilibiliClientCommentMethods = {
         return response.data;
     },
 
+    // 置顶/取消置顶评论，仅可操作自己管理的评论区中的一级评论
+    // action：1 设为置顶，0 取消置顶
+    async pinReply(this: any, type: string, oid: string, rpid: string, action: number) {
+        const url = "https://api.bilibili.com/x/v2/reply/top";
+        const body = `type=${type}&oid=${oid}&rpid=${rpid}&action=${action}&csrf=${this.biliJct}`;
+        const response = await this.postRequest(url, body, "application/x-www-form-urlencoded");
+        return response.data;
+    },
+
     // 删除评论（只能删除自己的评论，或自己管理的评论区下的评论）
     async deleteReply(this: any, type: string, oid: string, rpid: string) {
         const url = "https://api.bilibili.com/x/v2/reply/del";

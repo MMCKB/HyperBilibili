@@ -5,7 +5,7 @@
       <text style="font-weight: bold; margin-top: 35px">{{ $t("login.scanToLogin") }}</text>
       <div class="qr_code">
         <qrcode value="{{qr_value}}" show="{{show_qr}}" style="width: 210px; height: 210px"></qrcode>
-        <image style="position: absolute" show="{{anims.show_loading}}" src="{{anims.loading_src.value}}"></image>
+        <image class="loading-spin" style="position: absolute" show="{{anims.show_loading}}" src="{{anims.loading_src.value}}"></image>
       </div>
       <text style="margin-top: 20px; font-size: 26px; font-weight: bold">{{ $t("login.goToOfficialApp") }}</text>
       <text style="font-size: 20px">{{ $t("login.doScan") }}</text>

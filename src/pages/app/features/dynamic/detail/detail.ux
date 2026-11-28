@@ -1,11 +1,13 @@
 <import name="title-bar" src="@components/TitleBar/TitleBar.ux"></import>
 <import name="online-image" src="@components//BetterOnlineImage/BetterOnlineImage.ux"></import>
 <import name="videoshow" src="@components/Video/Video.ux"></import>
+<import name="full-screen-input" src="@components/FullScreenInput/FullScreenInput.ux"></import>
 
 <template>
   <div class="page">
     <scroll scroll-y="true" class="scroll {{scrclass}}" bounces="true">
-      <title-bar title="dynamic.detail.title"></title-bar>
+      <title-bar title="dynamic.detail.title" right-text="dynamic.detail.more"
+        @right-click="OpenMoreMenu"></title-bar>
       <div class="user">
         <image class="userface" onclick="OpenUser(dyn.modules.module_author.mid)" src="{{dyn.modules.module_author.face}}@75w_75h" alt="/common/fullgray.png"></image>
         <div class="userinfo">
@@ -21,10 +23,52 @@
         </div>
       </div>
       <div class="ctx">
+        <!-- 发布动态时可填写标题 -->
+        <text class="dyn-content-title" if="{{dyn_title}}">{{ dyn_title }}</text>
+
+        <!-- 话题气泡：点击进入话题页 -->
+        <scroll scroll-x="true" class="dyn-topics" if="{{topic_tags.length > 0}}" bounces="true">
+          <div class="dyn-topic-chip" for="{{topic_tags}}" @click="OpenTopic($item.id, $item.name)">
+            <text class="dyn-topic-chip-text">#{{ $item.name }}#</text>
+          </div>
+        </scroll>
+
         <!-- 动态文本desc 不为空时渲染 -->
         <text class="dyn-content-text" if="{{dyn.modules.module_dynamic.desc.text}}">
           {{ dyn.modules.module_dynamic.desc.text }}
         </text>
+
+        <!-- @提及：与评论区一致的提及展示 -->
+        <div class="dyn-mentions" if="{{mention_users.length > 0}}">
+          <text class="dyn-mention-chip" if="{{mention_users.length === 1}}"
+            @click="OpenMention(mention_users[0].mid)">@{{ mention_users[0].uname }}</text>
+          <div class="dyn-mention-expand" if="{{mention_users.length > 1}}" @click="ShowMentions">
+            <text class="dyn-mention-expand-text">提及 {{ mention_users.length }} 人</text>
+            <text class="dyn-mention-expand-icon">▾</text>
+          </div>
+        </div>
+
+        <!-- 直播动态：只展示封面和标题，不跳转直播间 -->
+        <div class="dyn-live-card" if="{{live_preview}}">
+          <div class="dyn-live-head">
+            <text class="dyn-live-badge">直播</text>
+            <text class="dyn-live-status {{live_preview.isLive ? 'dyn-live-status-on' : ''}}">{{ live_preview.statusText }}</text>
+          </div>
+          <online-image width="330px" height="186px" margin-top="6px" lock-size="true" loading-anim="true"
+            if="{{live_preview.cover}}" src="{{live_preview.cover}}@330w_186h"></online-image>
+          <text class="dyn-live-title" if="{{live_preview.title}}">{{ live_preview.title }}</text>
+          <text class="dyn-live-area" if="{{live_preview.areaName}}">{{ live_preview.areaName }}</text>
+        </div>
+
+        <!-- 投票动态：点击打开投票面板 -->
+        <div class="dyn-vote-card" if="{{vote_preview}}" @click="OpenVotePanel">
+          <div class="dyn-vote-head">
+            <text class="dyn-vote-badge">{{ $t("dynamic.vote.badge") }}</text>
+            <text class="dyn-vote-join">{{ vote_join_text }}</text>
+          </div>
+          <text class="dyn-vote-title">{{ vote_preview.title }}</text>
+          <text class="dyn-vote-action">{{ $t("dynamic.vote.clickToVote") }}</text>
+        </div>
 
         <!-- 纯文本动态 不展示任何内容 -->
         <text if="{{dyn.type == 'DYNAMIC_TYPE_WORD'}}"></text>
@@ -34,6 +78,12 @@
         <!-- 视频投稿动态 展示视频跳转 -->
         <videoshow elif="{{dyn.type == 'DYNAMIC_TYPE_AV'}}" bvid="{{dyn.modules.module_dynamic.major.archive.bvid}}">
         </videoshow>
+        <!-- 专栏动态 展示封面与标题，点击进入专栏页 -->
+        <div elif="{{dyn.type == 'DYNAMIC_TYPE_ARTICLE'}}" class="ctx-article-box" @click="OpenArticle">
+          <image class="ctx-article-cover" if="{{article_cover}}" src="{{article_cover}}@330w_140h" alt="blank"></image>
+          <text class="ctx-article-title" if="{{article_title}}">{{ article_title }}</text>
+          <text class="ctx-article-desc" if="{{article_desc}}">{{ article_desc }}</text>
+        </div>
         <!-- 转发动态 显示原动态简略信息 -->
         <div elif="{{dyn.type == 'DYNAMIC_TYPE_FORWARD'}}" class="ctx-forwarded-box" @click="JumpToOrigDetail">
           <div style="flex-direction: row">
@@ -47,28 +97,962 @@
           <text class="ctx-forwarded-txt" else>[暂无文本内容]</text>
           <text class="ctx-forwarded-txt" style="color: gray">点击可查看详情</text>
         </div>
+        <!-- 直播动态内容由上方直播卡片展示 -->
+        <text elif="{{dyn.type == 'DYNAMIC_TYPE_LIVE' || dyn.type == 'DYNAMIC_TYPE_LIVE_RCMD'}}"></text>
 
         <text else>该类型动态暂不支持展示</text>
       </div>
+
+      <!-- 点赞 / 收藏 / 分享 -->
+      <div class="detail-actions">
+        <div class="detail-action {{ canFavorite ? '' : 'detail-action-wide' }}" @click="ToggleLike">
+          <image class="detail-action-icon"
+            src="{{ liked ? '/common/reply_liked.png' : '/common/replycontrol_like.png' }}"></image>
+          <text class="detail-action-text {{ liked ? 'detail-action-text-active' : '' }}">{{ likeLabel }}</text>
+        </div>
+        <div class="detail-action" if="{{canFavorite}}" @click="ToggleFavorite">
+          <image class="detail-action-icon"
+            src="{{ favorited ? '/common/vidtool_stared.png' : '/common/vidtool_star.png' }}"></image>
+          <text class="detail-action-text {{ favorited ? 'detail-action-text-active' : '' }}">{{ favoriteLabel }}</text>
+        </div>
+        <div class="detail-action {{ canFavorite ? '' : 'detail-action-wide' }}" @click="OpenSharePicker">
+          <image class="detail-action-icon" src="/common/dyn_share.png"></image>
+          <text class="detail-action-text">{{ forwardLabel }}</text>
+        </div>
+      </div>
+
+      <!-- 评论区入口 -->
+      <div class="detail-comment-entry" if="{{canComment}}" @click="OpenReplyPage">
+        <text class="detail-comment-entry-text">{{ commentEntryLabel }}</text>
+      </div>
+      <text class="comment-closed" if="{{!canComment}}">该动态未开放评论</text>
+
       <text style="margin-top: 30px"></text>
     </scroll>
+
+    <!-- 右上角三横线菜单 -->
+    <div class="more-overlay {{moreClosing ? 'modal-closing' : 'modal-entering'}}" if="{{moreMounted}}">
+      <div class="more-card {{moreClosing ? '' : 'modal-panel-entering'}}">
+        <text class="more-title">{{ moreMode === "delete" ? "删除动态" : "动态操作" }}</text>
+        <div if="{{moreMode === 'actions'}}">
+          <div class="more-item" if="{{isOwn}}" @click="ToggleTopDynamic">
+            <text class="more-item-text">{{ isTop ? "取消置顶" : "置顶动态" }}</text>
+          </div>
+          <div class="more-item" if="{{isOwn}}" @click="DeleteDynamic">
+            <text class="more-item-text more-item-danger">删除动态</text>
+          </div>
+          <div class="more-item" if="{{!isOwn}}" @click="ReportDynamic">
+            <text class="more-item-text more-item-danger">举报该动态</text>
+          </div>
+          <div class="more-item" @click="CloseMoreMenu">
+            <text class="more-item-text">取消</text>
+          </div>
+        </div>
+        <div class="more-confirm" if="{{moreMode === 'delete'}}">
+          <text class="more-confirm-text">删除后无法恢复，确定删除这条动态吗？</text>
+          <div class="more-confirm-buttons">
+            <div class="more-button" @click="BackToMoreActions">
+              <text class="more-button-text">取消</text>
+            </div>
+            <div class="more-button more-button-danger" @click="ConfirmDeleteDynamic">
+              <text class="more-button-text">{{ dynamicDeleting ? "删除中…" : "删除" }}</text>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 分享，和视频详情页保持一致 -->
+    <div class="share-overlay {{shareClosing ? 'modal-closing' : 'modal-entering'}}" if="{{shareMounted}}">
+      <div class="share-picker {{shareClosing ? '' : 'modal-panel-entering'}}">
+        <div class="share-header">
+          <text class="share-title {{ shareStatus ? 'share-title-success' : '' }}">{{ shareStatus || "分享" }}</text>
+        </div>
+        <div class="share-message" @click="OpenShareMessageInput">
+          <text class="share-message-text {{ shareMessage ? '' : 'share-message-placeholder' }}">{{ shareMessage || "写句留言，可不填" }}</text>
+        </div>
+        <div class="share-option" @click="ShareToFriends">
+          <text class="share-option-title">分享给好友</text>
+        </div>
+        <div class="share-option" @click="ShareToDynamic">
+          <text class="share-option-title">{{ sharePosting ? "发布中…" : "分享到动态" }}</text>
+        </div>
+        <div class="share-buttons">
+          <div class="share-cancel" @click="CloseShareOverlay">
+            <text class="share-cancel-text">取消</text>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- @提及列表：与评论区一致的弹出列表 -->
+    <div class="mentionmenu-overlay {{mentionClosing ? 'modal-closing' : 'modal-entering'}}" if="{{mentionMounted}}">
+      <div class="mentionmenu-card {{mentionClosing ? '' : 'modal-panel-entering'}}">
+        <text class="mentionmenu-title">{{ $t("dynamic.vote.mention") }} {{ mentionUsers.length }} {{ $t("dynamic.vote.mentionUnit") }}</text>
+        <scroll scroll-y="true" class="mentionmenu-list">
+          <div class="mentionmenu-item" for="{{mentionUsers}}" @click="JumpMention($item.mid)">
+            <image class="mentionmenu-avatar" src="{{$item.avatar}}" alt="/common/fullgray.png"></image>
+            <text class="mentionmenu-name">{{ $item.uname }}</text>
+          </div>
+        </scroll>
+        <div class="mentionmenu-option" @click="CloseMentionMenu">
+          <text class="mentionmenu-option-text">{{ $t("dynamic.vote.cancel") }}</text>
+        </div>
+      </div>
+    </div>
+
+    <!-- 投票面板 -->
+    <div class="vote-overlay {{voteClosing ? 'modal-closing' : 'modal-entering'}}" if="{{voteMounted}}">
+      <div class="vote-card {{voteClosing ? '' : 'modal-panel-entering'}}">
+        <text class="vote-card-title">{{ $t("dynamic.vote.title") }}</text>
+        <scroll scroll-y="true" class="vote-scroll">
+          <text class="vote-title">{{ voteTitle }}</text>
+          <text class="vote-desc" if="{{voteDesc}}">{{ voteDesc }}</text>
+          <text class="vote-meta" if="{{voteMetaText}}">{{ voteMetaText }}</text>
+          <div class="vote-option {{$item.selected ? 'vote-option-selected' : ''}} {{voteCanVote ? '' : 'vote-option-readonly'}}"
+            for="{{voteOptions}}" @click="ToggleVoteOption($idx)">
+            <div class="vote-option-row">
+              <text class="vote-option-text">{{ $item.label }}</text>
+              <text class="vote-option-percent" if="{{voteShowResult}}">{{ $item.percent }}%</text>
+              <text class="vote-option-check" if="{{$item.selected}}">✓</text>
+            </div>
+            <online-image class="vote-option-image" if="{{$item.imgUrl}}" width="110px" height="70px"
+              margin-top="6px" lock-size="true" loading-anim="true" src="{{$item.imgUrl}}@110w_70h"></online-image>
+            <div class="vote-bar" if="{{voteShowResult}}">
+              <div class="vote-bar-inner" style="width: {{$item.percent}}%;"></div>
+            </div>
+          </div>
+          <text class="vote-tip" if="{{voteLoading}}">{{ $t("dynamic.vote.loading") }}</text>
+          <text class="vote-tip" if="{{voteError}}" @click="LoadVoteInfo">{{ voteError }}</text>
+          <text class="vote-tip" if="{{voteTipText}}">{{ voteTipText }}</text>
+        </scroll>
+        <div class="vote-buttons">
+          <div class="vote-btn" @click="CloseVotePanel">
+            <text class="vote-btn-text">{{ $t("dynamic.vote.close") }}</text>
+          </div>
+          <div class="vote-btn vote-btn-primary {{voteSubmitting ? 'vote-btn-disabled' : ''}}"
+            if="{{voteCanVote}}" @click="SubmitVote">
+            <text class="vote-btn-text">{{ voteSubmitting ? $t("dynamic.vote.submitting") : $t("dynamic.vote.submit") }}</text>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <full-screen-input style="position: absolute; z-index: 50" if="{{shareInputMode}}"
+      initial-value="{{ shareMessage }}" maxlength="100" @send="FinishShareMessageInput"
+      @exit="ExitShareMessageInput"></full-screen-input>
   </div>
 </template>
 
 <script>
 import router from "@system.router"
+import prompt from "@system.prompt"
+import { ExtractDynamicLive, ExtractDynamicMentions, ExtractDynamicTopics, ExtractDynamicVote } from "@src/dynamictools.ts"
 
 export default {
   public: {
     dyn: null,
+    dynId: "",
     pubAction: "N/A",
     scrclass: ""
   },
+  private: {
+    article_cover: "",
+    article_title: "",
+    article_desc: "",
+    dyn_title: "",
+    liked: false,
+    likeCount: 0,
+    likePending: false,
+    favorited: false,
+    favoriteCount: 0,
+    favoritePending: false,
+    canFavorite: true,
+    commentCount: 0,
+    forwardCount: 0,
+    hasCommentCount: false,
+    hasForwardCount: false,
+    canComment: true,
+    commentType: "17",
+    commentOid: "",
+    mention_users: [],
+    topic_tags: [],
+    live_preview: null,
+    mentionUsers: [],
+    mentionMounted: false,
+    mentionClosing: false,
+    mentionAnimTimer: 0,
+    mentionSeq: 0,
+    vote_preview: null,
+    voteMounted: false,
+    voteClosing: false,
+    voteAnimTimer: 0,
+    voteLoading: false,
+    voteError: "",
+    voteTitle: "",
+    voteDesc: "",
+    voteMetaText: "",
+    voteTipText: "",
+    voteOptions: [],
+    voteSelected: [],
+    voteChoiceCnt: 1,
+    voteCanVote: false,
+    voteShowResult: false,
+    voteSubmitting: false,
+    voteId: "",
+    voteDynamicId: "",
+    voteSeq: 0,
+    upMid: "",
+    isOwn: false,
+    isTop: false,
+    topPending: false,
+    dynamicDeleting: false,
+    moreMounted: false,
+    moreClosing: false,
+    moreMode: "actions",
+    moreAnimTimer: 0,
+    shareMounted: false,
+    shareClosing: false,
+    shareAnimTimer: 0,
+    shareMessage: "",
+    shareInputMode: false,
+    sharePosting: false,
+    shareStatus: ""
+  },
+  computed: {
+    likeLabel() {
+      if (this.likeCount > 0) return this.$app.$def.tools.formatNumber(this.likeCount)
+      return this.liked ? "已赞" : "点赞"
+    },
+    favoriteLabel() {
+      if (this.favoriteCount > 0) return this.$app.$def.tools.formatNumber(this.favoriteCount)
+      return this.favorited ? "已收藏" : "收藏"
+    },
+    forwardLabel() {
+      if (this.hasForwardCount) return this.$app.$def.tools.formatNumber(this.forwardCount)
+      return "分享"
+    },
+    commentEntryLabel() {
+      const base = this.canComment ? "查看评论区" : "该动态未开放评论"
+      if (this.canComment && this.hasCommentCount) {
+        return `${base} · ${this.$app.$def.tools.formatNumber(this.commentCount)}`
+      }
+      return base
+    },
+    vote_join_text() {
+      const join = this.vote_preview ? Number(this.vote_preview.joinNum) || 0 : 0
+      return join > 0 ? `${this.$app.$def.tools.formatNumber(join)}人参与` : "投票"
+    }
+  },
+  // 兼容旧版 article 与新版 opus 两种专栏动态结构
+  PrepareArticleInfo() {
+    const modules = this.dyn && this.dyn.modules
+    const md = modules && modules.module_dynamic
+    const major = md && md.major
+    // 标题可用于纯文字/图文动态
+    if (this.dyn.type == "DYNAMIC_TYPE_WORD" || this.dyn.type == "DYNAMIC_TYPE_DRAW") {
+      this.dyn_title = (md && md.title) || (major && major.opus && major.opus.title) || ""
+    }
+    if (!major) {
+      return
+    }
+    if (major.article) {
+      const covers = major.article.covers || []
+      this.article_cover = covers[0] || ""
+      this.article_title = major.article.title || ""
+      this.article_desc = major.article.desc || ""
+    } else if (major.opus) {
+      const pics = major.opus.pics || []
+      this.article_cover = (pics[0] && (pics[0].url || pics[0].src)) || ""
+      this.article_title = major.opus.title || ""
+      this.article_desc = (major.opus.summary && major.opus.summary.text) || ""
+    }
+    if (this.article_cover.indexOf("//") === 0) {
+      this.article_cover = "https:" + this.article_cover
+    }
+  },
+  RefreshStats() {
+    const modules = this.dyn && this.dyn.modules
+    const stat = modules && modules.module_stat
+    const like = stat && stat.like
+    const favorite = stat && stat.favorite
+    const comment = stat && stat.comment
+    const forward = stat && stat.forward
+    const likeStatus = like && like.status
+    const favStatus = favorite && favorite.status
+    this.liked = likeStatus === true || likeStatus === 1 || likeStatus === "1" || likeStatus === "STATE_LIKE"
+    this.likeCount = Number(like && like.count) || 0
+    this.favorited = favStatus === true || favStatus === 1 || favStatus === "1"
+      || favStatus === "STATE_LIKE" || favStatus === "STATE_FAVORITE"
+    this.favoriteCount = Number(favorite && favorite.count) || 0
+    // 视频投稿动态没有动态收藏语义，直接隐藏收藏按钮
+    const videoTypes = ["DYNAMIC_TYPE_AV", "DYNAMIC_TYPE_UGC_SEASON"]
+    this.canFavorite = videoTypes.indexOf(this.dyn.type) === -1
+    this.hasCommentCount = !!comment && comment.count !== undefined && comment.count !== null
+    this.commentCount = Number(comment && comment.count) || 0
+    this.hasForwardCount = !!forward && forward.count !== undefined && forward.count !== null
+    this.forwardCount = Number(forward && forward.count) || 0
+    const author = modules && modules.module_author
+    this.upMid = author && author.mid ? String(author.mid) : ""
+    this.isTop = !!(author && author.is_top)
+    const me = global.biliclient.accountInfo
+    this.isOwn = !!(me && author && String(me.mid) === String(author.mid))
+  },
+  GetDynId() {
+    if (!this.dyn) return String(this.dynId || "")
+    let id = this.dynId || this.dyn.id_str || this.dyn.id || this.dyn.dyn_id_str || this.dyn.dynamic_id_str || ""
+    if (!id && this.dyn.basic) {
+      const type = Number(this.dyn.basic.comment_type)
+      if (type === 11 || type === 17) {
+        id = this.dyn.basic.comment_id_str || ""
+      }
+    }
+    return String(id || "")
+  },
+  GetCommentTarget() {
+    const basic = this.dyn && this.dyn.basic
+    const rawType = basic && basic.comment_type
+    if (rawType !== undefined && rawType !== null && Number(rawType) === 0) {
+      return null
+    }
+    const type = Number(rawType) || 17
+    const oid = (basic && basic.comment_id_str) || this.GetDynId()
+    if (!oid) return null
+    return { type: String(type), oid: String(oid) }
+  },
+  GetShareTitle() {
+    const modules = this.dyn && this.dyn.modules
+    const md = modules && modules.module_dynamic
+    let text = this.dyn_title || this.article_title || (md && md.desc && md.desc.text) || ""
+    text = String(text).replace(/\s+/g, " ").trim()
+    if (!text) {
+      text = (modules && modules.module_author && modules.module_author.name
+        ? modules.module_author.name + "的"
+        : "") + "动态"
+    }
+    return Array.from(text).slice(0, 36).join("")
+  },
+  GetDynUrl() {
+    return `https://t.bilibili.com/${this.GetDynId()}`
+  },
+  // @提及列表
+  NormalizeMentionAvatar(face) {
+    if (typeof face !== "string" || !face) return "/common/fullgray.png"
+    let url = face
+    if (url.indexOf("//") === 0) url = "https:" + url
+    if (url.indexOf("@") === -1) url += "@60w_60h"
+    return url
+  },
+  OpenMention(mid) {
+    if (!mid) return
+    router.push({
+      uri: "pages/user",
+      params: {
+        uid: String(mid)
+      }
+    })
+  },
+  ShowMentions() {
+    if (this.mention_users.length <= 1) return
+    const users = []
+    this.mention_users.forEach((user) => {
+      users.push({
+        mid: String(user.mid),
+        uname: String(user.uname || ""),
+        avatar: "/common/fullgray.png"
+      })
+    })
+    clearTimeout(this.mentionAnimTimer)
+    this.mentionUsers = users
+    this.mentionClosing = false
+    this.mentionMounted = true
+    this.LoadMentionAvatars(users)
+  },
+  async LoadMentionAvatars(users) {
+    const seq = ++this.mentionSeq
+    try {
+      const uids = users.map((user) => String(user.mid))
+      const cards = (await global.biliclient.getMultiUserInfoByUID(uids)) || {}
+      if (seq !== this.mentionSeq || !this.mentionMounted) return
+      this.mentionUsers = users.map((user) => {
+        const card = cards[String(user.mid)] || {}
+        return {
+          mid: user.mid,
+          uname: user.uname,
+          avatar: this.NormalizeMentionAvatar(card.face)
+        }
+      })
+    } catch (e) {
+      global.logger.error("获取提及用户头像失败:", e)
+    }
+  },
+  CloseMentionMenu() {
+    clearTimeout(this.mentionAnimTimer)
+    if (!this.mentionMounted || this.mentionClosing) return
+    this.mentionSeq++
+    this.mentionClosing = true
+    this.mentionAnimTimer = setTimeout(() => {
+      this.mentionMounted = false
+      this.mentionClosing = false
+    }, 180)
+  },
+  JumpMention(mid) {
+    if (!mid) return
+    this.CloseMentionMenu()
+    router.push({
+      uri: "pages/user",
+      params: {
+        uid: String(mid)
+      }
+    })
+  },
+  // 投票面板
+  OpenVotePanel() {
+    if (!this.vote_preview) return
+    clearTimeout(this.voteAnimTimer)
+    this.voteId = String(this.vote_preview.voteId || "")
+    this.voteDynamicId = this.GetDynId()
+    this.voteTitle = this.vote_preview.title || ""
+    this.voteDesc = ""
+    this.voteMetaText = ""
+    this.voteTipText = ""
+    this.voteOptions = []
+    this.voteSelected = []
+    this.voteCanVote = false
+    this.voteShowResult = false
+    this.voteSubmitting = false
+    this.voteError = ""
+    this.voteClosing = false
+    this.voteMounted = true
+    this.LoadVoteInfo()
+  },
+  CloseVotePanel() {
+    clearTimeout(this.voteAnimTimer)
+    if (!this.voteMounted || this.voteClosing) return
+    this.voteSeq++
+    this.voteClosing = true
+    this.voteAnimTimer = setTimeout(() => {
+      this.voteMounted = false
+      this.voteClosing = false
+    }, 180)
+  },
+  FormatVoteTime(ts) {
+    const time = Number(ts) || 0
+    if (!time) return ""
+    const d = new Date(time * 1000)
+    const mm = ("0" + (d.getMonth() + 1)).slice(-2)
+    const dd = ("0" + d.getDate()).slice(-2)
+    const hh = ("0" + d.getHours()).slice(-2)
+    const mi = ("0" + d.getMinutes()).slice(-2)
+    return `${mm}-${dd} ${hh}:${mi}`
+  },
+  NormalizeVoteOptions(options) {
+    const list = Array.isArray(options) ? options : []
+    let total = 0
+    list.forEach((option) => {
+      total += Number(option && option.cnt) || 0
+    })
+    const selected = this.voteSelected.map((idx) => Number(idx))
+    return list.map((option, index) => {
+      const optIdx = Number(option && option.opt_idx)
+      const count = Number(option && option.cnt) || 0
+      const percent = total > 0 ? Math.round((count / total) * 100) : 0
+      return {
+        optIdx: isNaN(optIdx) ? index : optIdx,
+        label: String((option && (option.opt_desc || option.optDesc)) || `选项 ${index + 1}`),
+        imgUrl: String((option && (option.img_url || option.imgUrl)) || ""),
+        count: count,
+        percent: percent,
+        selected: selected.indexOf(isNaN(optIdx) ? index : optIdx) !== -1
+      }
+    })
+  },
+  ApplyVoteInfo(voteInfo, myVotes) {
+    const info = voteInfo || {}
+    const mine = Array.isArray(myVotes) ? myVotes : []
+    this.voteTitle = String(info.title || this.voteTitle || "")
+    this.voteDesc = String(info.desc || "")
+    this.voteSelected = mine.map((idx) => Number(idx))
+    const choiceCnt = Number(info.choice_cnt) || 1
+    this.voteChoiceCnt = Math.max(1, choiceCnt)
+    const endTime = Number(info.end_time) || 0
+    const ended = endTime > 0 && endTime * 1000 <= Date.now()
+    const voted = this.voteSelected.length > 0
+    this.voteCanVote = !ended && !voted && !!(global.biliclient && global.biliclient.biliJct)
+    this.voteShowResult = ended || voted || !this.voteCanVote
+    const rawOptions = Array.isArray(info.options) ? info.options : []
+    if (rawOptions.length) {
+      this.voteOptions = this.NormalizeVoteOptions(rawOptions)
+    } else {
+      // 提交响应可能不带完整选项，保留原列表并同步选中态
+      this.voteOptions = this.voteOptions.map((item) => ({
+        optIdx: item.optIdx,
+        label: item.label,
+        imgUrl: item.imgUrl,
+        count: item.count,
+        percent: item.percent,
+        selected: this.voteSelected.indexOf(Number(item.optIdx)) !== -1
+      }))
+    }
+    const joinNum = Number(info.join_num) || 0
+    const parts = []
+    if (ended) {
+      parts.push(this.$t("dynamic.vote.ended"))
+    } else if (voted) {
+      parts.push(this.$t("dynamic.vote.voted"))
+    } else {
+      parts.push(this.$t("dynamic.vote.notVoted"))
+    }
+    if (endTime > 0) parts.push(this.$t("dynamic.vote.deadline") + " " + this.FormatVoteTime(endTime))
+    if (joinNum > 0) parts.push(this.$app.$def.tools.formatNumber(joinNum) + this.$t("dynamic.vote.join"))
+    if (this.voteChoiceCnt > 1) {
+      parts.push(this.$t("dynamic.vote.maxChoices") + this.voteChoiceCnt + this.$t("dynamic.vote.choiceUnit"))
+    }
+    this.voteMetaText = parts.join(" · ")
+    if (!global.biliclient || !global.biliclient.biliJct) {
+      this.voteTipText = this.$t("dynamic.vote.loginTip")
+    } else if (ended) {
+      this.voteTipText = this.$t("dynamic.vote.endedTip")
+    } else {
+      this.voteTipText = ""
+    }
+  },
+  async LoadVoteInfo() {
+    if (!this.voteId) return
+    const seq = ++this.voteSeq
+    this.voteLoading = true
+    this.voteError = ""
+    try {
+      const data = await global.biliclient.getDynamicVoteInfo(this.voteId)
+      if (seq !== this.voteSeq || !this.voteMounted) return
+      const info = (data && data.vote_info) || data || {}
+      const myVotes = (data && data.my_votes) || info.my_votes || []
+      this.ApplyVoteInfo(info, myVotes)
+    } catch (e) {
+      if (seq !== this.voteSeq) return
+      global.logger.error("获取投票信息失败: ", e)
+      this.voteError = this.$t("dynamic.vote.loadFailed")
+    } finally {
+      if (seq === this.voteSeq) this.voteLoading = false
+    }
+  },
+  ToggleVoteOption(index) {
+    if (!this.voteCanVote || this.voteSubmitting) return
+    if (index < 0 || index >= this.voteOptions.length) return
+    const option = this.voteOptions[index]
+    const optIdx = Number(option.optIdx)
+    let selected = this.voteSelected.slice()
+    const pos = selected.indexOf(optIdx)
+    if (pos >= 0) {
+      selected.splice(pos, 1)
+    } else {
+      if (selected.length >= this.voteChoiceCnt) {
+        selected.splice(0, 1)
+      }
+      selected.push(optIdx)
+    }
+    this.voteSelected = selected
+    this.voteOptions = this.voteOptions.map((item) => ({
+      optIdx: item.optIdx,
+      label: item.label,
+      imgUrl: item.imgUrl,
+      count: item.count,
+      percent: item.percent,
+      selected: selected.indexOf(Number(item.optIdx)) !== -1
+    }))
+  },
+  async SubmitVote() {
+    if (!this.voteCanVote || this.voteSubmitting) return
+    if (!this.voteSelected.length) {
+      prompt.showToast({message: this.$t("dynamic.vote.selectFirst")})
+      return
+    }
+    this.voteSubmitting = true
+    try {
+      const result = await global.biliclient.doDynamicVote(
+        this.voteId,
+        this.voteSelected.map((idx) => Number(idx)),
+        false,
+        this.voteDynamicId
+      )
+      if (result && Number(result.code) === 0) {
+        const info = (result.data && result.data.vote_info) || result.data || {}
+        // 成功响应可能省略 my_votes，此时沿用本次确认提交的选项，避免界面重新放开投票
+        const serverVotes = Array.isArray(info.my_votes) ? info.my_votes : null
+        const myVotes = serverVotes && serverVotes.length ? serverVotes : this.voteSelected.slice()
+        this.ApplyVoteInfo(info, myVotes)
+        if (this.vote_preview) {
+          const join = Number(info.join_num)
+          if (!isNaN(join) && join >= 0) {
+            this.vote_preview = {
+              voteId: this.vote_preview.voteId,
+              title: this.vote_preview.title,
+              joinNum: join
+            }
+          }
+        }
+        prompt.showToast({message: this.$t("dynamic.vote.success")})
+      } else {
+        prompt.showToast({
+          message: result && result.message ? `${this.$t("dynamic.vote.failed")}：${result.message}` : this.$t("dynamic.vote.failed"),
+          duration: 3000
+        })
+        // 服务端拒绝时刷新一次真实状态，避免重复提交
+        this.LoadVoteInfo()
+      }
+    } catch (e) {
+      global.logger.error("投票失败: ", e)
+      // 写请求结果不明，先停用提交，等重新读取到服务端状态再恢复
+      this.voteCanVote = false
+      this.voteTipText = this.$t("dynamic.vote.unknownTip")
+      prompt.showToast({message: this.$t("dynamic.vote.failed"), duration: 3000})
+    } finally {
+      this.voteSubmitting = false
+    }
+  },
+  async ToggleLike() {
+    if (this.likePending) return
+    const dynId = this.GetDynId()
+    if (!dynId) {
+      prompt.showToast({message: "暂时无法点赞这条动态"})
+      return
+    }
+    const nextLiked = !this.liked
+    this.likePending = true
+    try {
+      const result = await global.biliclient.thumbDynamic(dynId, nextLiked ? 1 : 2)
+      if (result && Number(result.code) === 0) {
+        this.liked = nextLiked
+        this.likeCount = Math.max(0, this.likeCount + (nextLiked ? 1 : -1))
+        prompt.showToast({message: nextLiked ? "点赞成功" : "已取消赞"})
+      } else {
+        prompt.showToast({
+          message: result && result.message ? `点赞失败：${result.message}` : "点赞失败，请重试",
+          duration: 3000
+        })
+      }
+    } catch (e) {
+      global.logger.error("动态点赞失败: ", e)
+      prompt.showToast({message: "点赞失败，请重试", duration: 3000})
+    } finally {
+      this.likePending = false
+    }
+  },
+  async ToggleFavorite() {
+    if (this.favoritePending) return
+    const dynId = this.GetDynId()
+    if (!dynId) {
+      prompt.showToast({message: "暂时无法收藏这条动态"})
+      return
+    }
+    const nextFav = !this.favorited
+    this.favoritePending = true
+    try {
+      const result = await global.biliclient.setDynamicFavorite(dynId, nextFav)
+      if (result && Number(result.code) === 0) {
+        this.favorited = nextFav
+        this.favoriteCount = Math.max(0, this.favoriteCount + (nextFav ? 1 : -1))
+        prompt.showToast({message: nextFav ? "收藏成功" : "已取消收藏"})
+      } else {
+        prompt.showToast({
+          message: result && result.message ? `收藏失败：${result.message}` : "收藏失败，请重试",
+          duration: 3000
+        })
+      }
+    } catch (e) {
+      global.logger.error("动态收藏失败: ", e)
+      prompt.showToast({message: "收藏失败，请重试", duration: 3000})
+    } finally {
+      this.favoritePending = false
+    }
+  },
+  OpenReplyPage() {
+    if (!this.canComment || !this.commentOid) {
+      prompt.showToast({message: "该动态未开放评论"})
+      return
+    }
+    router.push({
+      uri: "pages/reply/replys",
+      params: {
+        type: this.commentType,
+        oid: this.commentOid,
+        replycount: this.commentCount,
+        upmid: this.upMid
+      }
+    })
+  },
+  OpenSharePicker() {
+    clearTimeout(this.shareAnimTimer)
+    this.shareMounted = true
+    this.shareClosing = false
+    this.sharePosting = false
+    this.shareMessage = ""
+    this.shareInputMode = false
+    this.shareStatus = ""
+  },
+  OpenShareMessageInput() {
+    if (this.sharePosting) return
+    this.shareInputMode = true
+  },
+  FinishShareMessageInput(evt) {
+    this.shareInputMode = false
+    this.shareMessage = evt.detail.content
+  },
+  ExitShareMessageInput() {
+    this.shareInputMode = false
+  },
+  CloseShareOverlay() {
+    clearTimeout(this.shareAnimTimer)
+    if (!this.shareMounted) return
+    this.shareInputMode = false
+    this.shareClosing = true
+    this.shareAnimTimer = setTimeout(() => {
+      this.shareMounted = false
+      this.shareClosing = false
+    }, 180)
+  },
+  ShareToFriends() {
+    if (this.sharePosting || this.shareStatus) return
+    const dynId = this.GetDynId()
+    if (!dynId) {
+      prompt.showToast({message: "暂时无法分享这条动态"})
+      return
+    }
+    clearTimeout(this.shareAnimTimer)
+    this.shareMounted = false
+    this.shareClosing = false
+    this.shareInputMode = false
+    router.push({
+      uri: "pages/message/dmlist",
+      params: {
+        shareBvid: "",
+        shareDynId: dynId,
+        shareDynTitle: this.GetShareTitle(),
+        shareDynUrl: this.GetDynUrl(),
+        shareMessage: this.shareMessage.trim()
+      }
+    })
+  },
+  async ShareToDynamic() {
+    if (this.sharePosting || this.shareStatus) return
+    const dynId = this.GetDynId()
+    if (!dynId) {
+      prompt.showToast({message: "暂时无法分享这条动态"})
+      return
+    }
+    this.sharePosting = true
+    try {
+      const result = await global.biliclient.createDynamicRepost(dynId, this.shareMessage.trim())
+      const data = (result && result.data) || {}
+      const rejected = data.result != null && Number(data.result) !== 0
+      if (result && Number(result.code) === 0 && !rejected) {
+        const newId = data.dyn_id_str || data.dyn_id || ""
+        if (newId) global.publishedDynamicResult = { id: String(newId) }
+        this.shareStatus = "已分享到动态"
+        // 先在分享面板内显示结果，再关闭并弹出提示
+        setTimeout(() => {
+          this.CloseShareOverlay()
+          setTimeout(() => {
+            prompt.showToast({message: "已分享到动态", duration: 3000})
+          }, 200)
+        }, 500)
+      } else {
+        prompt.showToast({
+          message: (data.message || (result && result.message))
+            ? `分享失败：${data.message || result.message}`
+            : "分享失败，请重试",
+          duration: 3000
+        })
+      }
+    } catch (e) {
+      global.logger.error("分享动态失败: ", e)
+      prompt.showToast({message: "分享失败，请重试", duration: 3000})
+    } finally {
+      this.sharePosting = false
+    }
+  },
+  OpenMoreMenu() {
+    clearTimeout(this.moreAnimTimer)
+    this.moreMode = "actions"
+    this.moreClosing = false
+    this.moreMounted = true
+  },
+  CloseMoreMenu() {
+    clearTimeout(this.moreAnimTimer)
+    if (!this.moreMounted) return
+    this.moreClosing = true
+    this.moreAnimTimer = setTimeout(() => {
+      this.moreMounted = false
+      this.moreClosing = false
+      this.moreMode = "actions"
+    }, 180)
+  },
+  BackToMoreActions() {
+    if (this.dynamicDeleting) return
+    this.moreMode = "actions"
+  },
+  async ToggleTopDynamic() {
+    if (this.topPending) return
+    const dynId = this.GetDynId()
+    if (!dynId) {
+      prompt.showToast({message: "暂时无法操作这条动态"})
+      return
+    }
+    const nextTop = !this.isTop
+    this.topPending = true
+    this.CloseMoreMenu()
+    try {
+      const result = await global.biliclient.setDynamicTop(dynId, nextTop)
+      if (result && Number(result.code) === 0) {
+        this.isTop = nextTop
+        global.dynamicListDirty = true
+        prompt.showToast({message: nextTop ? "置顶成功" : "已取消置顶"})
+      } else {
+        prompt.showToast({
+          message: result && result.message ? `操作失败：${result.message}` : "操作失败，请重试",
+          duration: 3000
+        })
+      }
+    } catch (e) {
+      global.logger.error("动态置顶失败: ", e)
+      prompt.showToast({message: "操作失败，请重试", duration: 3000})
+    } finally {
+      this.topPending = false
+    }
+  },
+  DeleteDynamic() {
+    if (this.dynamicDeleting || !this.isOwn) return
+    this.moreMode = "delete"
+  },
+  ConfirmDeleteDynamic() {
+    if (this.dynamicDeleting) return
+    this.DoDeleteDynamic()
+  },
+  async DoDeleteDynamic() {
+    if (this.dynamicDeleting) return
+    const dynId = this.GetDynId()
+    if (!dynId) {
+      prompt.showToast({message: "暂时无法删除这条动态"})
+      return
+    }
+    this.dynamicDeleting = true
+    try {
+      const result = await global.biliclient.removeDynamic(dynId)
+      if (result && Number(result.code) === 0) {
+        global.dynamicListDirty = true
+        prompt.showToast({message: "删除成功"})
+        setTimeout(() => {
+          global.ui.OnBackPressTriggered()
+        }, 400)
+      } else {
+        prompt.showToast({
+          message: result && result.message ? `删除失败：${result.message}` : "删除失败，请重试",
+          duration: 3000
+        })
+      }
+    } catch (e) {
+      global.logger.error("删除动态失败: ", e)
+      prompt.showToast({message: "删除失败，请重试", duration: 3000})
+    } finally {
+      this.dynamicDeleting = false
+    }
+  },
+  ReportDynamic() {
+    const dynId = this.GetDynId()
+    if (!dynId) {
+      prompt.showToast({message: "请重新进入动态详情后再试"})
+      return
+    }
+    const author = this.dyn.modules && this.dyn.modules.module_author
+    this.CloseMoreMenu()
+    router.push({
+      uri: "pages/reply/reportreply",
+      params: {
+        reportKind: "dynamic",
+        dynId: dynId,
+        accusedUid: author && author.mid ? String(author.mid) : "",
+        excerpt: this.GetShareTitle()
+      }
+    })
+  },
+  GetArticleCvid() {
+    const major = this.dyn && this.dyn.modules && this.dyn.modules.module_dynamic && this.dyn.modules.module_dynamic.major
+    const article = major && major.article
+    if (!article) {
+      return ""
+    }
+    let id = article.id != null ? String(article.id) : ""
+    if (id.indexOf("cv") === 0) {
+      return id
+    }
+    // 从 jump_url（https://www.bilibili.com/read/cv123...）里取 cv 号
+    const jump = article.jump_url || ""
+    const marker = "read/"
+    const pos = jump.indexOf(marker)
+    if (pos >= 0) {
+      let cv = jump.substring(pos + marker.length)
+      const q = cv.indexOf("?")
+      if (q >= 0) {
+        cv = cv.substring(0, q)
+      }
+      if (cv.indexOf("cv") === 0) {
+        return cv
+      }
+    }
+    return id ? "cv" + id : ""
+  },
+  GetOpusId() {
+    const major = this.dyn && this.dyn.modules && this.dyn.modules.module_dynamic && this.dyn.modules.module_dynamic.major
+    const opus = major && major.opus
+    if (!opus) {
+      return ""
+    }
+    const jump = opus.jump_url || (this.dyn.basic && this.dyn.basic.jump_url) || ""
+    const marker = "/opus/"
+    const pos = jump.indexOf(marker)
+    if (pos >= 0) {
+      let id = jump.substring(pos + marker.length)
+      const q = id.indexOf("?")
+      if (q >= 0) id = id.substring(0, q)
+      const hash = id.indexOf("#")
+      if (hash >= 0) id = id.substring(0, hash)
+      if (id) return id
+    }
+    // opus 动态的 id_str 通常就是 opus id
+    return this.GetDynId()
+  },
+  OpenArticle() {
+    const cvid = this.GetArticleCvid()
+    if (cvid) {
+      router.push({
+        uri: "pages/article/articleshow",
+        params: {
+          cvid: cvid
+        }
+      })
+      return
+    }
+    // 新版专栏使用 opus 结构，没有 cv 号
+    const opusId = this.GetOpusId()
+    if (opusId) {
+      router.push({
+        uri: "pages/article/opusshow",
+        params: {
+          opusId: opusId
+        }
+      })
+      return
+    }
+    prompt.showToast({ message: "暂时无法打开该专栏" })
+  },
   JumpToOrigDetail() {
+    const orig = this.dyn.orig || {}
+    const origId = orig.id_str || orig.id || ""
     router.push({
       uri: "pages/app/features/dynamic/detail",
       params: {
-        dyn: this.dyn.orig,
+        dyn: orig,
+        dynId: String(origId || ""),
         pubAction: "发布了动态"
       }
     })
@@ -81,12 +1065,69 @@ export default {
       }
     })
   },
+  OpenTopic(id, name) {
+    if (!id) return
+    router.push({
+      uri: "pages/topic",
+      params: {
+        topicId: String(id),
+        topicName: String(name || "")
+      }
+    })
+  },
   onInit() {
     // 来自子组件push的object传递会变成字符串
-    // 因此需要进行类型检查和手动parse
-    if (typeof this.dyn != Object) {
-      this.dyn = JSON.parse(this.dyn)
-      console.log(this.dyn)
+    if (typeof this.dyn === "string") {
+      try {
+        this.dyn = JSON.parse(this.dyn)
+      } catch (e) {
+        global.logger.error("解析动态详情失败: ", e)
+      }
+    }
+    if (!this.dyn || !this.dyn.modules) return
+    this.PrepareArticleInfo()
+    this.RefreshStats()
+    this.mention_users = ExtractDynamicMentions(this.dyn)
+    this.topic_tags = ExtractDynamicTopics(this.dyn)
+    this.vote_preview = ExtractDynamicVote(this.dyn)
+    this.live_preview = ExtractDynamicLive(this.dyn)
+    this.mentionSeq = 0
+    this.voteSeq = 0
+    const target = this.GetCommentTarget()
+    this.canComment = !!target
+    if (target) {
+      this.commentType = target.type
+      this.commentOid = target.oid
+    }
+  },
+  onReady() {
+    this.$options.onBackPress = () => {
+      if (this.shareInputMode) {
+        this.shareInputMode = false
+        return true
+      }
+      if (this.voteMounted) {
+        this.CloseVotePanel()
+        return true
+      }
+      if (this.mentionMounted) {
+        this.CloseMentionMenu()
+        return true
+      }
+      if (this.shareMounted) {
+        this.CloseShareOverlay()
+        return true
+      }
+      if (this.moreMounted) {
+        if (this.moreMode === "delete") {
+          this.BackToMoreActions()
+        } else {
+          this.CloseMoreMenu()
+        }
+        return true
+      }
+      global.ui.OnBackPressTriggered()
+      return true
     }
   }
 }

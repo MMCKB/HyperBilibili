@@ -84,7 +84,7 @@
         </div>
       </swiper>
     </scroll>
-    <image style="position: absolute; margin-top: 305px" if="{{anims.show_loading}}" src="{{anims.loading_src.value}}"></image>
+    <image class="loading-spin" style="position: absolute; margin-top: 305px" if="{{anims.show_loading}}" src="{{anims.loading_src.value}}"></image>
   </div>
 </template>
 
@@ -153,10 +153,9 @@ export default {
   },
   OpenArticle(item) {
     router.push({
-      uri: "pages/article/articlesave",
+      uri: "pages/article/articleshow",
       params: {
-        cvid: "cv" + item.id,
-        cvtitle: item.title
+        cvid: "cv" + item.id
       }
     })
   },

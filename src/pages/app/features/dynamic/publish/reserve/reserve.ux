@@ -1,0 +1,187 @@
+<import name="title-bar" src="@components/TitleBar/TitleBar.ux"></import>
+<import name="full-screen-input" src="@components/FullScreenInput/FullScreenInput.ux"></import>
+
+<template>
+  <div class="page">
+    <scroll scroll-y="true" class="scroll {{scrclass}}" bounces="true">
+      <title-bar title="{{ hadReserve ? 'dynamic.publish.reserve.editTitle' : 'dynamic.publish.reserve.title' }}"></title-bar>
+      <div class="reserve-form">
+        <div class="field-card" @click="OpenTitleInput">
+          <div class="field-head">
+            <text class="field-label">{{ $t("dynamic.publish.reserve.reserveTitle") }}</text>
+            <text class="field-count">{{ titleCount }}/14</text>
+          </div>
+          <text class="field-value {{reserveTitle ? '' : 'field-placeholder'}}">
+            {{ reserveTitle || $t("dynamic.publish.reserve.reserveTitlePlaceholder") }}
+          </text>
+        </div>
+
+        <div class="control-card">
+          <text class="control-label">{{ $t("dynamic.publish.reserve.startTime") }}</text>
+          <div class="control-row">
+            <text class="control-sub">{{ $t("dynamic.publish.reserve.date") }}</text>
+            <div class="stepper">
+              <div class="step" @click="AdjustDay(-1)"><text class="step-text">‹</text></div>
+              <text class="step-value">{{ dateText }}</text>
+              <div class="step" @click="AdjustDay(1)"><text class="step-text">›</text></div>
+            </div>
+          </div>
+          <div class="control-row">
+            <text class="control-sub">{{ $t("dynamic.publish.reserve.hour") }}</text>
+            <div class="stepper">
+              <div class="step" @click="AdjustHour(-1)"><text class="step-text">‹</text></div>
+              <text class="step-value">{{ hourText }}</text>
+              <div class="step" @click="AdjustHour(1)"><text class="step-text">›</text></div>
+            </div>
+          </div>
+          <div class="control-row">
+            <text class="control-sub">{{ $t("dynamic.publish.reserve.minute") }}</text>
+            <div class="stepper">
+              <div class="step" @click="AdjustMinute(-5)"><text class="step-text">‹</text></div>
+              <text class="step-value">{{ minuteText }}</text>
+              <div class="step" @click="AdjustMinute(5)"><text class="step-text">›</text></div>
+            </div>
+          </div>
+        </div>
+
+        <text class="reserve-hint">{{ $t("dynamic.publish.reserve.hint") }}</text>
+
+        <div class="submit-button" @click="Complete">
+          <text class="submit-text">{{ $t("dynamic.publish.reserve.done") }}</text>
+        </div>
+      </div>
+      <text class="bottom-space"></text>
+    </scroll>
+    <full-screen-input style="position: absolute" if="{{inputOpen}}" initial-value="{{inputSeed}}"
+      maxlength="14" @send="FinishInput" @exit="ExitInput"></full-screen-input>
+  </div>
+</template>
+
+<script>
+import prompt from "@system.prompt"
+
+export default {
+  public: {
+    reserve: ""
+  },
+  private: {
+    scrclass: "",
+    reserveTitle: "",
+    dayOffset: 1,
+    hour: 20,
+    minute: 0,
+    hadReserve: false,
+    inputOpen: false,
+    inputSeed: ""
+  },
+  computed: {
+    titleCount() {
+      return Array.from(this.reserveTitle).length
+    },
+    dateText() {
+      const now = new Date()
+      const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + this.dayOffset)
+      return `${d.getMonth() + 1}月${d.getDate()}日`
+    },
+    hourText() {
+      return ("0" + this.hour).slice(-2) + "时"
+    },
+    minuteText() {
+      return ("0" + this.minute).slice(-2) + "分"
+    }
+  },
+  OpenTitleInput() {
+    this.inputSeed = this.reserveTitle
+    this.inputOpen = true
+  },
+  FinishInput(evt) {
+    this.inputOpen = false
+    this.reserveTitle = evt.detail.content
+  },
+  ExitInput() {
+    this.inputOpen = false
+  },
+  AdjustDay(delta) {
+    const next = this.dayOffset + delta
+    if (next < 0 || next > 7) return
+    this.dayOffset = next
+  },
+  AdjustHour(delta) {
+    let next = this.hour + delta
+    if (next < 0) next = 23
+    if (next > 23) next = 0
+    this.hour = next
+  },
+  AdjustMinute(delta) {
+    let next = this.minute + delta
+    if (next < 0) next = 55
+    if (next > 55) next = 0
+    this.minute = next
+  },
+  BuildStartTime() {
+    const now = new Date()
+    return new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate() + this.dayOffset,
+      this.hour,
+      this.minute,
+      0,
+      0
+    )
+  },
+  Complete() {
+    const title = this.reserveTitle.trim()
+    if (!title) {
+      prompt.showToast({message: this.$t("dynamic.publish.reserve.emptyTitle")})
+      return
+    }
+    if (Array.from(title).length > 14) {
+      prompt.showToast({message: this.$t("dynamic.publish.reserve.titleTooLong")})
+      return
+    }
+    const target = this.BuildStartTime()
+    if (target.getTime() < Date.now() + 5 * 60 * 1000) {
+      prompt.showToast({message: this.$t("dynamic.publish.reserve.tooSoon")})
+      return
+    }
+    global.dynamicEditorResult = {
+      kind: "reserve",
+      reserve: {
+        title: title,
+        startTime: Math.floor(target.getTime() / 1000)
+      }
+    }
+    global.ui.OnBackPressTriggered()
+  },
+  onInit() {
+    if (!this.reserve) return
+    let parsed = this.reserve
+    if (typeof parsed === "string") {
+      try {
+        parsed = JSON.parse(parsed)
+      } catch (e) {
+        parsed = null
+      }
+    }
+    if (!parsed) return
+    this.hadReserve = true
+    this.reserveTitle = parsed.title || ""
+    const date = new Date(Number(parsed.startTime || 0) * 1000)
+    if (!isNaN(date.getTime())) {
+      const now = new Date()
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+      const start = new Date(date.getFullYear(), date.getMonth(), date.getDate())
+      const offset = Math.round((start.getTime() - today.getTime()) / (24 * 60 * 60 * 1000))
+      this.dayOffset = Math.max(0, Math.min(7, offset))
+      this.hour = date.getHours()
+      this.minute = date.getMinutes()
+    }
+  }
+}
+</script>
+
+<style lang="less">
+@import "@less/global.less";
+@import "./reserve.less";
+</style>

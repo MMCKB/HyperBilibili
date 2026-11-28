@@ -52,3 +52,24 @@
 text {
     color: white;
 }
+
+// 加载转圈：搬自简明天气的 loading 动画
+// （64px loading 图标 + Vela CSS rotate 1.5s 无限旋转）
+@keyframes loading-spin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.loading-spin {
+    width: 40px;
+    height: 40px;
+    animation-name: loading-spin;
+    animation-duration: 1.5s;
+    animation-iteration-count: infinite;
+    animation-timing-function: linear;
+    transform-origin: 20px 20px;
+}

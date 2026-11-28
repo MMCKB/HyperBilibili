@@ -3,8 +3,9 @@
 
 <template>
   <div class="page card-enter {{scrclass}}">
-    <title-bar title="专栏阅读" static></title-bar>
-    <image style="position: absolute; margin-top: 245px" if="{{anims.show_loading}}" src="{{anims.loading_src.value}}"></image>
+    <title-bar title="专栏阅读" right-text="{{ offline ? '' : 'article.more' }}"
+      @right-click="OpenMoreMenu"></title-bar>
+    <image class="loading-spin" style="position: absolute; margin-top: 245px" if="{{anims.show_loading}}" src="{{anims.loading_src.value}}"></image>
     <div if="{{showarticle}}" class="articlebox">
       <div class="infobox">
         <text class="title">{{ article.readInfo.title }}</text>
@@ -25,11 +26,27 @@
         <html-renderer doms="{{article_content}}"></html-renderer>
       </div>
     </div>
+    <div class="article-error" if="{{loadFailed}}" @click="RetryLoad">
+      <text class="article-error-text">专栏加载失败，点击重试</text>
+    </div>
     <text style="margin-top: 50px"></text>
+
+    <div class="more-overlay {{moreClosing ? 'modal-closing' : 'modal-entering'}}" if="{{moreMounted}}">
+      <div class="more-card {{moreClosing ? '' : 'modal-panel-entering'}}">
+        <text class="more-title">专栏操作</text>
+        <div class="more-item" @click="CacheArticle">
+          <text class="more-item-text more-item-danger">{{ caching ? "缓存中…" : "缓存此专栏" }}</text>
+        </div>
+        <div class="more-item" @click="CloseMoreMenu">
+          <text class="more-item-text">取消</text>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script>
+import prompt from "@system.prompt"
 export default {
   public: {
     cvid: "cv1",
@@ -42,9 +59,14 @@ export default {
     article: {},
     article_content: {},
     showarticle: false,
-    
+    loadFailed: false,
+
     current_page_num: 0,
     max_page_num: 0,
+    caching: false,
+    moreMounted: false,
+    moreClosing: false,
+    moreAnimTimer: 0,
     anims: {
       show_loading: false
     }
@@ -62,6 +84,7 @@ export default {
     return result;
   },
   async LoadArticle() {
+    this.loadFailed = false
     this.anims.show_loading = true
     this.anims.loading.start()
 
@@ -73,7 +96,9 @@ export default {
           article_html = this.article_html
         }
         else{
-          article_html = await global.biliclient.getArticle(this.cvid)
+          // 解析器依赖旧版专栏页的 __INITIAL_STATE__，不能使用默认的新 opus 页面
+          article_html = await global.biliclient.getArticle(this.cvid, false)
+          if (!article_html) throw new Error("empty article html")
         }
 
         const article = this.$app.$def.articletools.parseArticlePageHtml(article_html)
@@ -96,12 +121,67 @@ export default {
       }
       catch(e){
         global.logger.error(e.toString())
+        this.loadFailed = true
+        try { this.anims.loading.stop() } catch (err) {}
+        this.anims.show_loading = false
       }
     }, 1000)
   },
+  RetryLoad() {
+    this.loadFailed = false
+    this.showarticle = false
+    this.LoadArticle()
+  },
+  OpenMoreMenu() {
+    if (this.offline) return
+    clearTimeout(this.moreAnimTimer)
+    this.moreClosing = false
+    this.moreMounted = true
+  },
+  CloseMoreMenu() {
+    clearTimeout(this.moreAnimTimer)
+    if (!this.moreMounted) return
+    this.moreClosing = true
+    this.moreAnimTimer = setTimeout(() => {
+      this.moreMounted = false
+      this.moreClosing = false
+    }, 180)
+  },
+  async CacheArticle() {
+    if (this.caching || this.offline || !this.cvid) return
+    this.caching = true
+    try {
+      const html = await global.biliclient.getArticle(this.cvid, false)
+      const title = (this.article.readInfo && this.article.readInfo.title) || this.cvid
+      const id = await global.savedcontent.SavedContentManager.storeContent(title, html, "article")
+      if (id) {
+        prompt.showToast({message: "专栏已缓存"})
+      } else {
+        prompt.showToast({message: "缓存失败，请重试", duration: 3000})
+      }
+    } catch (e) {
+      global.logger.error("缓存专栏失败: ", e)
+      prompt.showToast({message: "缓存失败，请重试", duration: 3000})
+    } finally {
+      this.caching = false
+      this.CloseMoreMenu()
+    }
+  },
   onInit() {
+    // 路由参数可能被序列化为字符串，统一归一化，避免把 "false" 当作缓存模式
+    this.offline = this.offline === true || this.offline === "true"
     global.animengine.defaults.loading.CreateLoadingAnimation(this)
     this.LoadArticle()
+  },
+  onReady() {
+    this.$options.onBackPress = () => {
+      if (this.moreMounted) {
+        this.CloseMoreMenu()
+        return true
+      }
+      global.ui.OnBackPressTriggered()
+      return true
+    }
   }
 }
 </script>

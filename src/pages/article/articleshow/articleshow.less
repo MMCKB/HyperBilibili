@@ -27,8 +27,92 @@
     margin-left: 7px;
 }
 
+.article-error {
+    margin-top: 24px;
+    padding: 12px 20px;
+    align-items: center;
+    justify-content: center;
+}
+
+.article-error-text {
+    font-size: 20px;
+    font-weight: 600;
+    color: #9e9e9e;
+}
+
 .pinknum {
     color: #ff7da8;
     font-size: 18px;
     font-weight: 600;
+}
+
+.more-overlay {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.65);
+    align-items: center;
+    justify-content: center;
+    transition: opacity 150ms ease;
+}
+
+.more-card {
+    width: 300px;
+    border-radius: 32px;
+    background-color: #2a2a2a;
+    flex-direction: column;
+    align-items: center;
+    padding: 18px;
+}
+
+.more-title {
+    margin-bottom: 10px;
+    font-size: 24px;
+    font-weight: 600;
+}
+
+.more-item {
+    width: 260px;
+    height: 54px;
+    margin-top: 8px;
+    border-radius: 27px;
+    background-color: #262626;
+    align-items: center;
+    justify-content: center;
+}
+
+.more-item-text {
+    font-size: 20px;
+    font-weight: 600;
+    color: #ffffff;
+}
+
+.more-item-danger {
+    color: #ff7da8;
+}
+
+@keyframes dialog-fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes dialog-panel-in {
+    from { transform: translateY(26px) scale(0.97); }
+    to { transform: translateY(0px) scale(1); }
+}
+
+.modal-entering {
+    animation-name: dialog-fade-in;
+    animation-duration: 180ms;
+    animation-timing-function: ease;
+}
+
+.modal-panel-entering {
+    animation-name: dialog-panel-in;
+    animation-duration: 220ms;
+    animation-timing-function: ease;
+}
+
+.modal-closing {
+    opacity: 0;
 }

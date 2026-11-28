@@ -1,0 +1,313 @@
+<import name="title-bar" src="@components/TitleBar/TitleBar.ux"></import>
+<import name="dyn-show" src="@components/DynShow/DynShow.ux"></import>
+
+<template>
+  <div class="page">
+    <image style="position: absolute; left: 0px" src="{{getBgImg}}" static></image>
+    <scroll scroll-y="true" class="scroll {{scrclass}}" id="topicscroll" bounces="true">
+      <title-bar title="dynamic.topic.title"></title-bar>
+
+      <!-- 话题信息 -->
+      <div class="topic-header" if="{{topicName}}">
+        <text class="topic-name">#{{ topicName }}#</text>
+        <text class="topic-desc" if="{{topicDesc}}">{{ topicDesc }}</text>
+        <div class="topic-stats" if="{{topicViewText || topicDiscussText}}">
+          <text class="topic-stat" if="{{topicViewText}}">{{ topicViewText }}</text>
+          <text class="topic-stat" if="{{topicDiscussText}}">{{ topicDiscussText }}</text>
+        </div>
+        <div class="topic-creator" if="{{topicCreator}}" @click="OpenCreator">
+          <image class="topic-creator-avatar" src="{{topicCreator.face}}" alt="/common/fullgray.png"></image>
+          <text class="topic-creator-text">由 {{ topicCreator.name }} 发起</text>
+        </div>
+        <div class="topic-actions">
+          <div class="topic-action {{topicLiked ? 'topic-action-active' : ''}} {{likePending ? 'topic-action-disabled' : ''}}"
+            @click="ToggleTopicLike">
+            <image class="topic-action-icon"
+              src="{{ topicLiked ? '/common/reply_liked.png' : '/common/replycontrol_like.png' }}"></image>
+            <text class="topic-action-text">{{ topicLikeText }}</text>
+          </div>
+          <div class="topic-action {{topicFaved ? 'topic-action-active' : ''}} {{favPending ? 'topic-action-disabled' : ''}}"
+            @click="ToggleTopicFavorite">
+            <image class="topic-action-icon"
+              src="{{ topicFaved ? '/common/vidtool_stared.png' : '/common/vidtool_star.png' }}"></image>
+            <text class="topic-action-text">{{ topicFavText }}</text>
+          </div>
+        </div>
+      </div>
+
+      <!-- 话题动态瀑布流 -->
+      <div class="waterfall" if="{{showContent}}">
+        <div class="waterfall-column">
+          <dyn-show for="{{split1}}" dyn="{{$item}}"></dyn-show>
+        </div>
+        <div class="waterfall-column">
+          <dyn-show for="{{split2}}" dyn="{{$item}}"></dyn-show>
+        </div>
+      </div>
+      <div class="empty_tip_wrap" if="{{showContent && !split1.length && !split2.length}}">
+        <text class="empty-tip">{{ $t("dynamic.topic.empty") }}</text>
+      </div>
+      <div class="empty_tip_wrap" if="{{loadFailed}}" @click="RetryLoad">
+        <text class="empty-tip">{{ $t("dynamic.topic.retry") }}</text>
+      </div>
+      <div class="load-more" if="{{showContent && hasMore && !loading}}" @click="LoadMore">
+        <text class="load-more-text">{{ $t("dynamic.topic.loadMore") }}</text>
+      </div>
+
+      <text style="margin-top: 25px" static></text>
+    </scroll>
+    <image class="loading-spin" style="position: absolute; margin-top: 245px"
+      if="{{anims.show_loading}}" src="{{anims.loading_src.value}}"></image>
+  </div>
+</template>
+
+<script>
+import prompt from "@system.prompt"
+import router from "@system.router"
+
+export default {
+  public: {
+    topicId: "",
+    topicName: ""
+  },
+  private: {
+    scrclass: "",
+    topicDesc: "",
+    topicViewText: "",
+    topicDiscussText: "",
+    topicCreator: null,
+    topicLike: 0,
+    topicFav: 0,
+    topicLiked: false,
+    topicFaved: false,
+    likePending: false,
+    favPending: false,
+    items: [],
+    split1: [],
+    split2: [],
+    offset: "",
+    hasMore: false,
+    showContent: false,
+    loading: false,
+    loadFailed: false,
+    _reqSeq: 0,
+    anims: {
+      show_loading: false
+    }
+  },
+  computed: {
+    getBgImg() {
+      return this.$app.$def.bgimg.GetBackgroundImageSrc()
+    },
+    topicLikeText() {
+      if (this.topicLike > 0) return this.$app.$def.tools.formatNumber(this.topicLike)
+      return "点赞"
+    },
+    topicFavText() {
+      if (this.topicFav > 0) return this.$app.$def.tools.formatNumber(this.topicFav)
+      return "收藏"
+    }
+  },
+  SplitWaterfallArea(arr) {
+    const arr1 = []
+    const arr2 = []
+    arr.forEach((value, index) => {
+      if (index % 2 === 0) {
+        arr1.push(value)
+      } else {
+        arr2.push(value)
+      }
+    })
+    return { arr1, arr2 }
+  },
+  async LoadTopic() {
+    const seq = ++this._reqSeq
+    this.loading = true
+    this.loadFailed = false
+    this.showContent = false
+    this.items = []
+    this.split1 = []
+    this.split2 = []
+    this.anims.show_loading = true
+    this.anims.loading.start()
+
+    try {
+      await this.LoadTopicTop(seq)
+      const data = await global.biliclient.getTopicFeed(this.topicId, "", 0)
+      if (seq !== this._reqSeq) return
+      this.ApplyFeed(data, false)
+      this.showContent = true
+    } catch (e) {
+      if (seq !== this._reqSeq) return
+      global.logger.error("获取话题动态失败: ", e)
+      this.loadFailed = true
+      prompt.showToast({message: this.$t("dynamic.topic.retry"), duration: 3000})
+    } finally {
+      if (seq === this._reqSeq) {
+        this.loading = false
+        this.anims.loading.stop()
+        this.anims.show_loading = false
+      }
+    }
+  },
+  async LoadTopicTop(seq) {
+    try {
+      const top = await global.biliclient.getTopicDetail(this.topicId)
+      if (seq !== this._reqSeq) return
+      const item = top && top.topic_item
+      if (item) {
+        this.topicName = String(item.name || this.topicName || "")
+        this.topicDesc = String(item.description || "")
+        const view = Number(item.view)
+        const discuss = Number(item.discuss)
+        this.topicViewText = view > 0 ? `${this.$app.$def.tools.formatNumber(view)} 浏览` : ""
+        this.topicDiscussText = discuss > 0 ? `${this.$app.$def.tools.formatNumber(discuss)} 讨论` : ""
+        this.topicLike = Number(item.like) || 0
+        this.topicFav = Number(item.fav) || 0
+        this.topicLiked = !!item.is_like
+        this.topicFaved = !!item.is_fav
+      }
+      const creator = top && top.topic_creator
+      if (creator) {
+        this.topicCreator = {
+          uid: String(creator.uid || ""),
+          name: String(creator.name || ""),
+          face: this.NormalizeFace(creator.face)
+        }
+      }
+    } catch (e) {
+      // 话题详情失败不影响动态列表展示
+      global.logger.error("获取话题详情失败: ", e)
+    }
+  },
+  NormalizeFace(face) {
+    if (typeof face !== "string" || !face) return "/common/fullgray.png"
+    let url = face
+    if (url.indexOf("//") === 0) url = "https:" + url
+    if (url.indexOf("@") === -1) url += "@75w_75h"
+    return url
+  },
+  OpenCreator() {
+    if (!this.topicCreator || !this.topicCreator.uid) return
+    router.push({
+      uri: "pages/user",
+      params: {
+        uid: this.topicCreator.uid
+      }
+    })
+  },
+  async ToggleTopicLike() {
+    if (this.likePending) return
+    if (!global.biliclient || !global.biliclient.biliJct) {
+      prompt.showToast({message: "请先登录"})
+      return
+    }
+    this.likePending = true
+    try {
+      const result = await global.biliclient.likeTopic(this.topicId, this.topicLiked)
+      if (result && Number(result.code) === 0) {
+        this.topicLiked = !this.topicLiked
+        this.topicLike = Math.max(0, this.topicLike + (this.topicLiked ? 1 : -1))
+        prompt.showToast({message: this.topicLiked ? "已点赞" : "已取消赞"})
+      } else {
+        prompt.showToast({
+          message: result && result.message ? `操作失败：${result.message}` : "操作失败，请重试",
+          duration: 3000
+        })
+      }
+    } catch (e) {
+      global.logger.error("话题点赞失败: ", e)
+      prompt.showToast({message: "操作失败，请重试", duration: 3000})
+    } finally {
+      this.likePending = false
+    }
+  },
+  async ToggleTopicFavorite() {
+    if (this.favPending) return
+    if (!global.biliclient || !global.biliclient.biliJct) {
+      prompt.showToast({message: "请先登录"})
+      return
+    }
+    this.favPending = true
+    try {
+      const result = await global.biliclient.setTopicFavorite(this.topicId, !this.topicFaved)
+      if (result && Number(result.code) === 0) {
+        this.topicFaved = !this.topicFaved
+        this.topicFav = Math.max(0, this.topicFav + (this.topicFaved ? 1 : -1))
+        prompt.showToast({message: this.topicFaved ? "已收藏" : "已取消收藏"})
+      } else {
+        prompt.showToast({
+          message: result && result.message ? `操作失败：${result.message}` : "操作失败，请重试",
+          duration: 3000
+        })
+      }
+    } catch (e) {
+      global.logger.error("话题收藏失败: ", e)
+      prompt.showToast({message: "操作失败，请重试", duration: 3000})
+    } finally {
+      this.favPending = false
+    }
+  },
+  ApplyFeed(data, append) {
+    const cardList = (data && data.topic_card_list) || {}
+    const rawItems = cardList.items || []
+    const dynamics = []
+    rawItems.forEach((entry) => {
+      if (entry && entry.dynamic_card_item) {
+        dynamics.push(entry.dynamic_card_item)
+      }
+    })
+    const combined = append ? this.items.concat(dynamics) : dynamics
+    this.items = combined
+    const split = this.SplitWaterfallArea(combined)
+    this.split1 = split.arr1
+    this.split2 = split.arr2
+    this.offset = cardList.offset || ""
+    this.hasMore = !!cardList.has_more
+  },
+  async LoadMore() {
+    if (this.loading || !this.hasMore) return
+    const seq = this._reqSeq
+    this.loading = true
+    this.anims.show_loading = true
+    this.anims.loading.start()
+    try {
+      const data = await global.biliclient.getTopicFeed(this.topicId, this.offset, 0)
+      if (seq !== this._reqSeq) return
+      this.ApplyFeed(data, true)
+    } catch (e) {
+      if (seq !== this._reqSeq) return
+      global.logger.error("加载更多话题动态失败: ", e)
+      prompt.showToast({message: this.$t("dynamic.topic.retry"), duration: 3000})
+    } finally {
+      if (seq === this._reqSeq) {
+        this.loading = false
+        this.anims.loading.stop()
+        this.anims.show_loading = false
+      }
+    }
+  },
+  RetryLoad() {
+    this.LoadTopic()
+  },
+  onInit() {
+    this._reqSeq = 0
+    this.topicId = String(this.topicId || "")
+    this.topicName = String(this.topicName || "")
+  },
+  onReady() {
+    global.animengine.defaults.loading.CreateLoadingAnimation(this)
+    if (!this.topicId) {
+      prompt.showToast({message: "话题不存在"})
+      global.ui.OnBackPressTriggered()
+      return
+    }
+    this.LoadTopic()
+  }
+}
+</script>
+
+<style lang="less">
+@import "@less/global.less";
+@import "./topic.less";
+</style>

@@ -1,0 +1,769 @@
+<import name="title-bar" src="@components/TitleBar/TitleBar.ux"></import>
+<import name="full-screen-input" src="@components/FullScreenInput/FullScreenInput.ux"></import>
+
+<template>
+  <div class="page">
+    <scroll scroll-y="true" class="scroll {{scrclass}}" bounces="true">
+      <title-bar title="dynamic.publish.title" back-disabled="{{posting ? '1' : ''}}"></title-bar>
+      <div class="publish-form">
+        <div class="content-card" @click="OpenContentInput">
+          <div class="content-head">
+            <text class="content-label">{{ $t("dynamic.publish.content") }}</text>
+            <text class="content-count">{{ contentCount }}/1000</text>
+          </div>
+          <text class="content-value {{dynamicText ? '' : 'content-placeholder'}}">
+            {{ dynamicText || $t("dynamic.publish.placeholder") }}
+          </text>
+        </div>
+
+        <!-- 标题 -->
+        <div class="option-card" @click="OpenTitleInput">
+          <text class="option-label">{{ $t("dynamic.publish.titleField") }}</text>
+          <text class="option-value {{dynamicTitle ? 'option-value-active' : ''}}">
+            {{ dynamicTitle || $t("dynamic.publish.titlePlaceholder") }}
+          </text>
+        </div>
+
+        <!-- 话题 / @提及 -->
+        <div class="option-grid">
+          <div class="option-cell {{topic ? 'option-cell-active' : ''}}" @click="OpenTopicPanel">
+            <text class="option-cell-label {{topic ? 'option-cell-label-active' : ''}}">{{ $t("dynamic.publish.topic") }}</text>
+            <text class="option-cell-value {{topic ? 'option-cell-value-active' : ''}}">{{ topic ? topic.name : $t("dynamic.publish.choose") }}</text>
+          </div>
+          <div class="option-cell {{selectedMentions.length ? 'option-cell-active' : ''}}" @click="OpenMentionPanel">
+            <text class="option-cell-label {{selectedMentions.length ? 'option-cell-label-active' : ''}}">{{ $t("dynamic.publish.mention") }}</text>
+            <text class="option-cell-value {{selectedMentions.length ? 'option-cell-value-active' : ''}}">
+              {{ selectedMentions.length ? $t("dynamic.publish.mentionSelected") + " " + selectedMentions.length : $t("dynamic.publish.choose") }}
+            </text>
+          </div>
+        </div>
+
+        <!-- 投票 / 直播预约 -->
+        <div class="option-grid">
+          <div class="option-cell-wrap">
+            <div class="option-cell {{vote ? 'option-cell-active' : ''}}" @click="OpenVotePage">
+              <text class="option-cell-label {{vote ? 'option-cell-label-active' : ''}}">{{ $t("dynamic.publish.voteEntry") }}</text>
+              <text class="option-cell-value {{vote ? 'option-cell-value-active option-cell-value-delete' : ''}}">{{ vote ? vote.title : $t("dynamic.publish.add") }}</text>
+            </div>
+            <div class="option-delete" if="{{vote}}" @click="ClearVote">
+              <text class="option-delete-text">×</text>
+            </div>
+          </div>
+          <div class="option-cell-wrap">
+            <div class="option-cell {{reserve ? 'option-cell-active' : ''}}" @click="OpenReservePage">
+              <text class="option-cell-label {{reserve ? 'option-cell-label-active' : ''}}">{{ $t("dynamic.publish.reserveEntry") }}</text>
+              <text class="option-cell-value {{reserve ? 'option-cell-value-active option-cell-value-delete' : ''}}">{{ reserve ? reserve.title : $t("dynamic.publish.add") }}</text>
+            </div>
+            <div class="option-delete" if="{{reserve}}" @click="ClearReserve">
+              <text class="option-delete-text">×</text>
+            </div>
+          </div>
+        </div>
+
+        <!-- 定时发布 / 可见范围 -->
+        <div class="option-grid">
+          <div class="option-cell {{scheduledAt ? 'option-cell-active' : ''}}" @click="OpenSchedulePanel">
+            <text class="option-cell-label {{scheduledAt ? 'option-cell-label-active' : ''}}">{{ $t("dynamic.publish.schedule") }}</text>
+            <text class="option-cell-value {{scheduledAt ? 'option-cell-value-active' : ''}}">{{ scheduledAt ? scheduledLabel : $t("dynamic.publish.off") }}</text>
+          </div>
+          <div class="option-cell {{privatePub ? 'option-cell-active' : ''}}" @click="OpenVisibilityPanel">
+            <text class="option-cell-label {{privatePub ? 'option-cell-label-active' : ''}}">{{ $t("dynamic.publish.visibility") }}</text>
+            <text class="option-cell-value {{privatePub ? 'option-cell-value-active' : ''}}">{{ privatePub ? $t("dynamic.publish.private") : $t("dynamic.publish.public") }}</text>
+          </div>
+        </div>
+
+        <!-- 评论设置：允许 / 关闭 / 精选 -->
+        <div class="option-card" @click="OpenCommentPanel">
+          <text class="option-label">{{ $t("dynamic.publish.comment") }}</text>
+          <text class="option-value {{commentMode !== 'allow' ? 'option-value-active' : ''}}">{{ CommentModeLabel() }}</text>
+        </div>
+
+        <div class="publish-button {{posting ? 'publish-button-disabled' : ''}}" @click="PostDynamic">
+          <text class="publish-button-text {{posting ? 'publish-button-text-disabled' : ''}}">
+            {{ posting ? $t("dynamic.publish.posting") : (scheduledAt ? $t("dynamic.publish.scheduleSubmit") : $t("dynamic.publish.submit")) }}
+          </text>
+        </div>
+      </div>
+      <text class="bottom-space"></text>
+    </scroll>
+
+    <!-- 话题 / @ / 定时 / 可见范围 / 评论设置面板 -->
+    <div class="panel-overlay {{panelClosing ? 'modal-closing' : 'modal-entering'}}" if="{{panelMounted}}">
+      <div class="panel-card panel-card-{{panelMode}} {{panelClosing ? '' : 'modal-panel-entering'}}">
+        <text class="panel-title">{{ panelTitle }}</text>
+
+        <div class="panel-search" if="{{panelMode == 'topic' || panelMode == 'mention'}}" @click="OpenPanelSearch">
+          <text class="panel-search-text">
+            {{ panelMode == 'topic' ? (topicKeyword || $t("dynamic.publish.topicSearch")) : (mentionKeyword || $t("dynamic.publish.mentionSearch")) }}
+          </text>
+        </div>
+
+        <div class="panel-clear" if="{{panelMode == 'topic' && topic}}" @click="ClearTopic">
+          <text class="panel-clear-text">{{ $t("dynamic.publish.clearTopic") }}</text>
+        </div>
+
+        <scroll scroll-y="true" class="panel-list" if="{{panelMode == 'topic'}}">
+          <div class="panel-item" for="{{topicItems}}" @click="SelectTopic($item)">
+            <text class="panel-item-name">{{ $item.name }}</text>
+            <text class="panel-item-sub" if="{{$item.stat_desc}}">{{ $item.stat_desc }}</text>
+          </div>
+          <text class="panel-tip" if="{{topicLoading}}">{{ $t("dynamic.publish.loading") }}</text>
+          <text class="panel-tip" elif="{{!topicItems.length}}">{{ $t("dynamic.publish.noTopic") }}</text>
+        </scroll>
+
+        <!-- @ 面板沿用原有弹层，但加载时不创建列表；每行直接携带选中状态 -->
+        <scroll scroll-y="true" id="mentionScroll" class="panel-list" if="{{panelMode == 'mention' && mentionItems.length}}"
+          @scroll="OnMentionScroll">
+          <div class="mention-item {{$item.selected ? 'mention-item-active' : ''}}"
+            for="{{mentionItems}}" @click="ToggleMention($idx)">
+            <image class="mention-face" src="{{$item.face}}" alt="/common/fullgray.png"></image>
+            <text class="mention-name">{{ $item.name }}</text>
+            <text class="mention-check" if="{{$item.selected}}">✓</text>
+          </div>
+        </scroll>
+        <text class="panel-tip" if="{{panelMode == 'mention' && mentionLoading}}">{{ $t("dynamic.publish.loading") }}</text>
+        <text class="panel-tip" elif="{{panelMode == 'mention' && !mentionItems.length && mentionSearched}}">{{ $t("dynamic.publish.noMention") }}</text>
+        <text class="panel-tip" elif="{{panelMode == 'mention' && !mentionItems.length}}">{{ $t("dynamic.publish.mentionSearchHint") }}</text>
+
+        <!-- 定时发布 -->
+        <div class="schedule-body" if="{{panelMode == 'schedule'}}">
+          <div class="schedule-row">
+            <text class="schedule-label">{{ $t("dynamic.publish.scheduleDate") }}</text>
+            <div class="schedule-stepper">
+              <div class="schedule-step" @click="AdjustScheduleDay(-1)"><text class="schedule-step-text">‹</text></div>
+              <text class="schedule-value">{{ scheduleDateText }}</text>
+              <div class="schedule-step" @click="AdjustScheduleDay(1)"><text class="schedule-step-text">›</text></div>
+            </div>
+          </div>
+          <div class="schedule-row">
+            <text class="schedule-label">{{ $t("dynamic.publish.scheduleTime") }}</text>
+            <div class="schedule-stepper">
+              <div class="schedule-step" @click="AdjustScheduleHour(-1)"><text class="schedule-step-text">‹</text></div>
+              <text class="schedule-value">{{ scheduleTimeText }}</text>
+              <div class="schedule-step" @click="AdjustScheduleHour(1)"><text class="schedule-step-text">›</text></div>
+            </div>
+          </div>
+          <div class="schedule-row">
+            <text class="schedule-label">{{ $t("dynamic.publish.scheduleMinute") }}</text>
+            <div class="schedule-stepper">
+              <div class="schedule-step" @click="AdjustScheduleMinute(-5)"><text class="schedule-step-text">‹</text></div>
+              <text class="schedule-value">{{ scheduleMinuteText }}</text>
+              <div class="schedule-step" @click="AdjustScheduleMinute(5)"><text class="schedule-step-text">›</text></div>
+            </div>
+          </div>
+          <text class="schedule-hint">{{ $t("dynamic.publish.scheduleHint") }}</text>
+        </div>
+
+        <!-- 可见范围 -->
+        <div class="visibility-body" if="{{panelMode == 'visibility'}}">
+          <div class="panel-option {{!privatePub ? 'panel-option-active' : ''}}" @click="SelectVisibility(false)">
+            <text class="panel-option-text">{{ $t("dynamic.publish.public") }}</text>
+            <text class="panel-option-check" if="{{!privatePub}}">✓</text>
+          </div>
+          <div class="panel-option {{privatePub ? 'panel-option-active' : ''}}" @click="SelectVisibility(true)">
+            <text class="panel-option-text">{{ $t("dynamic.publish.private") }}</text>
+            <text class="panel-option-check" if="{{privatePub}}">✓</text>
+          </div>
+          <text class="schedule-hint">{{ $t("dynamic.publish.privateHint") }}</text>
+        </div>
+
+        <!-- 评论设置 -->
+        <div class="visibility-body" if="{{panelMode == 'comment'}}">
+          <div class="panel-option {{commentMode === 'allow' ? 'panel-option-active' : ''}}" @click="SelectCommentMode('allow')">
+            <text class="panel-option-text">{{ $t("dynamic.publish.commentAllow") }}</text>
+            <text class="panel-option-check" if="{{commentMode === 'allow'}}">✓</text>
+          </div>
+          <div class="panel-option {{commentMode === 'close' ? 'panel-option-active' : ''}}" @click="SelectCommentMode('close')">
+            <text class="panel-option-text">{{ $t("dynamic.publish.commentClose") }}</text>
+            <text class="panel-option-check" if="{{commentMode === 'close'}}">✓</text>
+          </div>
+          <div class="panel-option {{commentMode === 'choose' ? 'panel-option-active' : ''}}" @click="SelectCommentMode('choose')">
+            <text class="panel-option-text">{{ $t("dynamic.publish.commentChoose") }}</text>
+            <text class="panel-option-check" if="{{commentMode === 'choose'}}">✓</text>
+          </div>
+        </div>
+
+        <div class="panel-actions">
+          <div class="panel-btn" @click="ClosePanel">
+            <text class="panel-btn-text">{{ $t("dynamic.publish.cancel") }}</text>
+          </div>
+          <div class="panel-btn panel-btn-primary" if="{{panelMode == 'mention'}}" @click="ConfirmMentions">
+            <text class="panel-btn-text panel-btn-text-primary">{{ $t("dynamic.publish.confirm") }}</text>
+          </div>
+          <div class="panel-btn panel-btn-primary" if="{{panelMode == 'schedule'}}" @click="ConfirmSchedule">
+            <text class="panel-btn-text panel-btn-text-primary">{{ $t("dynamic.publish.confirm") }}</text>
+          </div>
+        </div>
+        <div class="panel-clear" if="{{panelMode == 'schedule' && scheduledAt}}" @click="ClearSchedule">
+          <text class="panel-clear-text">{{ $t("dynamic.publish.clearSchedule") }}</text>
+        </div>
+      </div>
+    </div>
+
+    <full-screen-input style="position: absolute" if="{{inputOpen}}" initial-value="{{inputSeed}}"
+      maxlength="{{inputMax}}" @send="FinishInput" @exit="ExitInput"></full-screen-input>
+  </div>
+</template>
+
+<script>
+import router from "@system.router"
+import prompt from "@system.prompt"
+
+export default {
+  private: {
+    scrclass: "",
+    dynamicText: "",
+    dynamicTitle: "",
+    topic: null,
+    selectedMentions: [],
+    vote: null,
+    reserve: null,
+    scheduledAt: 0,
+    privatePub: false,
+    commentMode: "allow",
+    posting: false,
+    inputOpen: false,
+    inputMode: "",
+    inputSeed: "",
+    inputMax: 1000,
+    panelOpen: false,
+    panelMounted: false,
+    panelClosing: false,
+    panelAnimTimer: 0,
+    panelMode: "",
+    panelTitle: "",
+    topicKeyword: "",
+    topicItems: [],
+    topicLoading: false,
+    mentionKeyword: "",
+    mentionItems: [],
+    mentionLoading: false,
+    mentionSearched: false,
+    mentionScrollTop: 0,
+    mentionSeq: 0,
+    scheduleDayOffset: 0,
+    scheduleHour: 0,
+    scheduleMinute: 0,
+    createdVoteId: 0,
+    createdReserveId: 0
+  },
+  computed: {
+    contentCount() {
+      return Array.from(this.dynamicText).length
+    },
+    scheduledLabel() {
+      if (!this.scheduledAt) return ""
+      const d = new Date(this.scheduledAt * 1000)
+      const mm = ("0" + (d.getMonth() + 1)).slice(-2)
+      const dd = ("0" + d.getDate()).slice(-2)
+      const hh = ("0" + d.getHours()).slice(-2)
+      const mi = ("0" + d.getMinutes()).slice(-2)
+      return `${mm}-${dd} ${hh}:${mi}`
+    },
+    scheduleDateText() {
+      const now = new Date()
+      const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + this.scheduleDayOffset)
+      return `${d.getMonth() + 1}月${d.getDate()}日`
+    },
+    scheduleTimeText() {
+      return ("0" + this.scheduleHour).slice(-2) + ":00"
+    },
+    scheduleMinuteText() {
+      return ("0" + this.scheduleMinute).slice(-2) + "分"
+    }
+  },
+  OpenContentInput() {
+    if (!this.posting) this.OpenInput("content", this.dynamicText, 1000)
+  },
+  OpenTitleInput() {
+    if (!this.posting) this.OpenInput("title", this.dynamicTitle, 20)
+  },
+  OpenInput(mode, seed, maxlength) {
+    this.inputMode = mode
+    this.inputSeed = seed
+    this.inputMax = maxlength
+    this.inputOpen = true
+  },
+  FinishInput(evt) {
+    this.inputOpen = false
+    const content = evt.detail.content
+    if (this.inputMode === "content") {
+      this.dynamicText = content
+    } else if (this.inputMode === "title") {
+      this.dynamicTitle = content
+    } else if (this.inputMode === "topicSearch") {
+      this.topicKeyword = content.trim()
+      this.LoadTopics(this.topicKeyword)
+    } else if (this.inputMode === "mentionSearch") {
+      this.mentionKeyword = content.trim()
+      if (this.mentionKeyword) {
+        this.LoadMentions(this.mentionKeyword)
+      } else {
+        this.mentionItems = []
+        this.mentionSearched = false
+      }
+    }
+  },
+  ExitInput() {
+    this.inputOpen = false
+  },
+  ShowPanel(mode, title) {
+    clearTimeout(this.panelAnimTimer)
+    this.panelMode = mode
+    this.panelTitle = title
+    this.panelClosing = false
+    this.panelMounted = true
+    this.panelOpen = true
+    if (mode === "mention") this.mentionScrollTop = 0
+  },
+  OpenTopicPanel() {
+    if (this.posting) return
+    this.ShowPanel("topic", this.$t("dynamic.publish.topic"))
+    if (!this.topicItems.length) this.LoadTopics(this.topicKeyword)
+  },
+  OpenMentionPanel() {
+    if (this.posting) return
+    this.ShowPanel("mention", this.$t("dynamic.publish.mention"))
+    // 进入面板不请求用户列表；手表上立刻拉取大量头像数据容易闪退
+  },
+  OpenCommentPanel() {
+    if (this.posting) return
+    this.ShowPanel("comment", this.$t("dynamic.publish.comment"))
+  },
+  CommentModeLabel() {
+    if (this.commentMode === "close") return this.$t("dynamic.publish.commentClose")
+    if (this.commentMode === "choose") return this.$t("dynamic.publish.commentChoose")
+    return this.$t("dynamic.publish.commentAllow")
+  },
+  SelectCommentMode(mode) {
+    this.commentMode = mode
+    this.ClosePanel()
+  },
+  OpenSchedulePanel() {
+    if (this.posting) return
+    if (this.privatePub) {
+      prompt.showToast({message: this.$t("dynamic.publish.schedulePrivateTip")})
+      return
+    }
+    if (!this.scheduledAt) this.ResetScheduleDraft()
+    this.ShowPanel("schedule", this.$t("dynamic.publish.schedule"))
+  },
+  OpenVisibilityPanel() {
+    if (this.posting) return
+    this.ShowPanel("visibility", this.$t("dynamic.publish.visibility"))
+  },
+  OpenPanelSearch() {
+    if (!this.panelOpen || this.posting) return
+    if (this.panelMode === "topic") {
+      this.OpenInput("topicSearch", this.topicKeyword, 30)
+    } else if (this.panelMode === "mention") {
+      this.OpenInput("mentionSearch", this.mentionKeyword, 30)
+    }
+  },
+  ClosePanel() {
+    if (this.panelMode === "mention") {
+      this.mentionSeq++
+      this.mentionLoading = false
+      this.mentionScrollTop = 0
+    }
+    this.panelOpen = false
+    if (!this.panelMounted) return
+    clearTimeout(this.panelAnimTimer)
+    this.panelClosing = true
+    this.panelAnimTimer = setTimeout(() => {
+      this.panelMounted = false
+      this.panelClosing = false
+    }, 180)
+  },
+  async LoadTopics(keyword) {
+    const seq = (this.topicSeq || 0) + 1
+    this.topicSeq = seq
+    this.topicLoading = true
+    this.topicItems = []
+    try {
+      const list = await global.biliclient.searchDynamicTopics(keyword || "")
+      if (seq !== this.topicSeq) return
+      this.topicItems = (list || []).map((item) => ({
+        id: item.id,
+        name: item.name,
+        stat_desc: item.stat_desc || ""
+      }))
+    } catch (e) {
+      if (seq !== this.topicSeq) return
+      global.logger.error("搜索话题失败: ", e)
+      prompt.showToast({message: this.$t("dynamic.publish.topicFail"), duration: 3000})
+    } finally {
+      if (seq === this.topicSeq) this.topicLoading = false
+    }
+  },
+  SelectTopic(item) {
+    this.topic = { id: item.id, name: item.name }
+    this.ClosePanel()
+  },
+  ClearTopic() {
+    this.topic = null
+    this.topicKeyword = ""
+    this.ClosePanel()
+  },
+  NormalizeMentionFace(face) {
+    if (typeof face !== "string" || !face) return "/common/fullgray.png"
+    let url = face
+    if (url.indexOf("//") === 0) url = "https:" + url
+    if (url.indexOf("@") === -1) url += "@60w_60h"
+    return url
+  },
+  async LoadMentions(keyword) {
+    const trimmed = (keyword || "").trim()
+    if (!trimmed) {
+      this.mentionItems = []
+      this.mentionSearched = false
+      return
+    }
+    const seq = ++this.mentionSeq
+    this.mentionLoading = true
+    this.mentionItems = []
+    this.mentionSearched = true
+    try {
+      const list = await global.biliclient.getDynamicMentionUsers(trimmed)
+      if (seq !== this.mentionSeq || this.panelMode !== "mention") return
+      // 预先生成纯数据行；避免模板函数在 Vela 列表 diff 时访问失效对象
+      const mapped = []
+      ;(list || []).forEach((item) => {
+        if (!item || !item.uid || !item.name) return
+        const uid = String(item.uid)
+        let selected = false
+        for (let i = 0; i < this.selectedMentions.length; i++) {
+          if (String(this.selectedMentions[i].uid) === uid) {
+            selected = true
+            break
+          }
+        }
+        mapped.push({
+          uid: uid,
+          name: String(item.name),
+          face: this.NormalizeMentionFace(item.face),
+          selected: selected
+        })
+      })
+      this.mentionItems = mapped
+    } catch (e) {
+      if (seq !== this.mentionSeq) return
+      global.logger.error("获取可@用户失败: ", e)
+      prompt.showToast({message: this.$t("dynamic.publish.mentionFail"), duration: 3000})
+    } finally {
+      if (seq === this.mentionSeq) this.mentionLoading = false
+    }
+  },
+  OnMentionScroll(e) {
+    const y = e && e.scrollY !== undefined ? e.scrollY : (e && e.detail ? e.detail.scrollY : 0)
+    this.mentionScrollTop = Number(y) || 0
+  },
+  RestoreMentionScroll() {
+    if (!this.$nextTick || !this.$element) return
+    const top = this.mentionScrollTop
+    this.$nextTick(() => {
+      const scroller = this.$element("mentionScroll")
+      if (scroller && scroller.scrollTo) {
+        scroller.scrollTo({ top: top, behavior: "instant" })
+      }
+    })
+  },
+  ToggleMention(index) {
+    if (this.mentionLoading || index < 0 || index >= this.mentionItems.length) return
+    const user = this.mentionItems[index]
+    const uid = String(user.uid)
+    let selectedIndex = -1
+    for (let i = 0; i < this.selectedMentions.length; i++) {
+      if (String(this.selectedMentions[i].uid) === uid) {
+        selectedIndex = i
+        break
+      }
+    }
+    if (user.selected) {
+      if (selectedIndex >= 0) this.selectedMentions.splice(selectedIndex, 1)
+    } else {
+      if (this.selectedMentions.length >= 10) {
+        prompt.showToast({message: this.$t("dynamic.publish.mentionLimit")})
+        return
+      }
+      this.selectedMentions.push({
+        uid: uid,
+        name: user.name,
+        face: user.face
+      })
+    }
+    // 只替换被点击的一行，避免整个列表重建后滚回顶部
+    this.mentionItems.splice(index, 1, {
+      uid: user.uid,
+      name: user.name,
+      face: user.face,
+      selected: !user.selected
+    })
+    this.RestoreMentionScroll()
+  },
+  ConfirmMentions() {
+    this.ClosePanel()
+  },
+  ResetScheduleDraft() {
+    const now = new Date()
+    let minute = Math.ceil((now.getMinutes() + 10) / 5) * 5
+    let hour = now.getHours()
+    let offset = 0
+    if (minute >= 60) {
+      minute = minute - 60
+      hour += 1
+    }
+    if (hour >= 24) {
+      hour = 0
+      offset = 1
+    }
+    this.scheduleDayOffset = offset
+    this.scheduleHour = hour
+    this.scheduleMinute = minute
+  },
+  AdjustScheduleDay(delta) {
+    const next = this.scheduleDayOffset + delta
+    if (next < 0 || next > 7) return
+    this.scheduleDayOffset = next
+  },
+  AdjustScheduleHour(delta) {
+    let next = this.scheduleHour + delta
+    if (next < 0) next = 23
+    if (next > 23) next = 0
+    this.scheduleHour = next
+  },
+  AdjustScheduleMinute(delta) {
+    let next = this.scheduleMinute + delta
+    if (next < 0) next = 55
+    if (next > 55) next = 0
+    this.scheduleMinute = next
+  },
+  BuildScheduleTime() {
+    const now = new Date()
+    return new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate() + this.scheduleDayOffset,
+      this.scheduleHour,
+      this.scheduleMinute,
+      0,
+      0
+    )
+  },
+  ConfirmSchedule() {
+    const target = this.BuildScheduleTime()
+    const diff = target.getTime() - Date.now()
+    if (diff < 6 * 60 * 1000) {
+      prompt.showToast({message: this.$t("dynamic.publish.scheduleTooSoon")})
+      return
+    }
+    if (diff > 7 * 24 * 60 * 60 * 1000) {
+      prompt.showToast({message: this.$t("dynamic.publish.scheduleTooLate")})
+      return
+    }
+    this.scheduledAt = Math.floor(target.getTime() / 1000)
+    this.privatePub = false
+    this.ClosePanel()
+  },
+  ClearSchedule() {
+    this.scheduledAt = 0
+    this.ClosePanel()
+  },
+  SelectVisibility(isPrivate) {
+    if (isPrivate && this.scheduledAt) {
+      prompt.showToast({message: this.$t("dynamic.publish.privateScheduleTip")})
+      return
+    }
+    this.privatePub = isPrivate
+    this.ClosePanel()
+  },
+  ClearVote() {
+    if (this.posting) return
+    this.vote = null
+    this.createdVoteId = 0
+  },
+  ClearReserve() {
+    if (this.posting) return
+    this.reserve = null
+    this.createdReserveId = 0
+  },
+  OpenVotePage() {
+    if (this.posting) return
+    global.dynamicEditorResult = null
+    router.push({
+      uri: "pages/app/features/dynamic/publish/vote",
+      params: { vote: this.vote ? JSON.stringify(this.vote) : "" }
+    })
+  },
+  OpenReservePage() {
+    if (this.posting) return
+    global.dynamicEditorResult = null
+    router.push({
+      uri: "pages/app/features/dynamic/publish/reserve",
+      params: { reserve: this.reserve ? JSON.stringify(this.reserve) : "" }
+    })
+  },
+  ShowFail(message) {
+    this.posting = false
+    prompt.showToast({
+      message: message || this.$t("dynamic.publish.retry"),
+      duration: 3000
+    })
+  },
+  async PostDynamic() {
+    if (this.posting) return
+    const content = this.dynamicText.trim()
+    if (!content) {
+      prompt.showToast({message: this.$t("dynamic.publish.empty")})
+      return
+    }
+    if (Array.from(content).length > 1000) {
+      prompt.showToast({message: this.$t("dynamic.publish.tooLong")})
+      return
+    }
+    if (Array.from(this.dynamicTitle.trim()).length > 20) {
+      prompt.showToast({message: this.$t("dynamic.publish.titleTooLong")})
+      return
+    }
+    if (this.scheduledAt && this.scheduledAt * 1000 < Date.now() + 6 * 60 * 1000) {
+      prompt.showToast({message: this.$t("dynamic.publish.scheduleExpired")})
+      this.scheduledAt = 0
+      return
+    }
+    if (this.vote && this.reserve) {
+      prompt.showToast({message: this.$t("dynamic.publish.voteReserveConflict"), duration: 3000})
+      return
+    }
+    if (this.vote && this.scheduledAt) {
+      prompt.showToast({message: this.$t("dynamic.publish.voteScheduleConflict"), duration: 3000})
+      return
+    }
+    if (this.reserve && this.scheduledAt) {
+      prompt.showToast({message: this.$t("dynamic.publish.reserveScheduleConflict"), duration: 3000})
+      return
+    }
+
+    this.posting = true
+    let voteNode = null
+    let reserveId = this.createdReserveId
+
+    try {
+      if (this.vote) {
+        if (!this.createdVoteId) {
+          const voteResult = await global.biliclient.createDynamicVote(this.vote)
+          if (!voteResult || voteResult.code !== 0) {
+            this.ShowFail(voteResult && voteResult.message
+              ? `${this.$t("dynamic.publish.voteFail")}：${voteResult.message}`
+              : this.$t("dynamic.publish.voteFail"))
+            return
+          }
+          const voteId = voteResult.data && (voteResult.data.vote_id || voteResult.data.voteId)
+          if (!voteId) {
+            this.ShowFail(this.$t("dynamic.publish.voteFail"))
+            return
+          }
+          this.createdVoteId = Number(voteId)
+        }
+        voteNode = {
+          title: this.vote.title,
+          voteId: this.createdVoteId
+        }
+      }
+
+      if (this.reserve && !reserveId) {
+        const reserveResult = await global.biliclient.createDynamicLiveReserve(
+          this.reserve.title,
+          this.reserve.startTime
+        )
+        if (!reserveResult || reserveResult.code !== 0) {
+          this.ShowFail(reserveResult && reserveResult.message
+            ? `${this.$t("dynamic.publish.reserveFail")}：${reserveResult.message}`
+            : this.$t("dynamic.publish.reserveFail"))
+          return
+        }
+        reserveId = reserveResult.data && (reserveResult.data.sid || reserveResult.data.id)
+        if (!reserveId) {
+          this.ShowFail(this.$t("dynamic.publish.reserveFail"))
+          return
+        }
+        this.createdReserveId = Number(reserveId)
+        reserveId = this.createdReserveId
+      }
+
+      const result = await global.biliclient.createDynamicPost({
+        text: content,
+        title: this.dynamicTitle.trim(),
+        topic: this.topic,
+        mentions: this.selectedMentions,
+        vote: voteNode,
+        scheduledAt: this.scheduledAt,
+        privatePub: this.privatePub,
+        replyOption: this.commentMode,
+        reserveId: reserveId
+      })
+      const resultData = (result && result.data) || {}
+      // code 为 0 但 data.result 非 0 时，服务端实际拒绝了动态（例如不支持的组合）
+      if (result && result.code === 0 && !(resultData.result != null && Number(resultData.result) !== 0)) {
+        global.publishedDynamicResult = {
+          id: resultData.dyn_id_str || resultData.dyn_id || ""
+        }
+        prompt.showToast({
+          message: this.scheduledAt
+            ? this.$t("dynamic.publish.scheduleSuccess")
+            : this.$t("dynamic.publish.success")
+        })
+        // 返回动画期间继续禁止编辑和重复提交
+        global.ui.OnBackPressTriggered()
+        return
+      }
+      const failMessage = resultData.message || (result && result.message) || ""
+      if (failMessage.indexOf("暂未支持的类型") !== -1) {
+        this.ShowFail(this.$t("dynamic.publish.unsupportedCombo"))
+        return
+      }
+      this.ShowFail(failMessage
+        ? `${this.$t("dynamic.publish.failed")}：${failMessage}`
+        : this.$t("dynamic.publish.retry"))
+    } catch (e) {
+      this.posting = false
+      global.logger.error("发布动态失败: ", e)
+      prompt.showToast({message: this.$t("dynamic.publish.retry"), duration: 3000})
+    }
+  },
+  onInit() {
+    this.topicSeq = 0
+    this.mentionSeq = 0
+  },
+  onReady() {
+    // 返回键先关闭选择面板，发布中则忽略返回
+    this.$options.onBackPress = () => {
+      if (this.panelOpen || this.panelMounted) {
+        this.ClosePanel()
+        return true
+      }
+      if (this.posting) {
+        return true
+      }
+      global.ui.OnBackPressTriggered()
+      return true
+    }
+  },
+  onShow() {
+    const result = global.dynamicEditorResult
+    if (!result) return
+    global.dynamicEditorResult = null
+    if (result.kind === "vote") {
+      this.vote = result.vote || null
+      this.createdVoteId = 0
+    } else if (result.kind === "reserve") {
+      this.reserve = result.reserve || null
+      this.createdReserveId = 0
+    }
+  }
+}
+</script>
+
+<style lang="less">
+@import "@less/global.less";
+@import "./publish.less";
+</style>

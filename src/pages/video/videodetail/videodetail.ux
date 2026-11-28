@@ -10,6 +10,19 @@
       <online-image if="{{renderingCover}}" src="{{vid.pic}}@319w_150h" margin-top="30px" lock-size="true" width="320px"
         height="150px" loading-anim="true" @loaded="GenBlur"></online-image>
       <text class="vidtitle">{{ vid.title }}</text>
+      <scroll scroll-x="true" class="vid-topics" if="{{ topic_tags.length > 0 || partition_tags.length > 0 }}" bounces="true">
+        <div class="vid-topic-chip" for="{{topic_tags}}" @click="OpenTopic($item.id, $item.name)">
+          <text class="vid-topic-chip-text">#{{ $item.name }}#</text>
+        </div>
+        <div class="vid-topic-chip vid-partition-chip" if="{{partition_tags.length === 1}}"
+          @click="OpenPartition(partition_tags[0])">
+          <text class="vid-topic-chip-text vid-partition-chip-text">{{ partition_tags[0].name }}</text>
+        </div>
+        <div class="vid-topic-chip vid-partition-chip" if="{{partition_tags.length > 1}}"
+          @click="OpenPartitionPicker">
+          <text class="vid-topic-chip-text vid-partition-chip-text">{{ partition_tags.length }}个</text>
+        </div>
+      </scroll>
       <div class="statbar">
         <div class="stat">
           <image class="statimg" src="/common/playcounticon.png" style="width: 23px; height: 25px; margin-top: 2px">
@@ -147,6 +160,20 @@
         </div>
       </div>
     </div>
+    <!-- 视频分区列表 -->
+    <div class="partition-overlay {{partitionClosing ? 'modal-closing' : 'modal-entering'}}" if="{{partitionMounted}}">
+      <div class="partition-card {{partitionClosing ? '' : 'modal-panel-entering'}}">
+        <text class="partition-title">视频分区</text>
+        <scroll scroll-y="true" class="partition-list">
+          <div class="partition-item" for="{{partition_tags}}" @click="OpenPartition($item)">
+            <text class="partition-item-text">{{ $item.name }}</text>
+          </div>
+        </scroll>
+        <div class="partition-cancel" @click="ClosePartitionPicker">
+          <text class="partition-cancel-text">取消</text>
+        </div>
+      </div>
+    </div>
     <full-screen-input style="position: absolute; z-index: 50" if="{{shareInputMode}}"
       initial-value="{{ shareMessage }}" maxlength="100" @send="FinishShareMessageInput"
       @exit="ExitShareMessageInput"></full-screen-input>
@@ -165,6 +192,11 @@ export default {
   },
   private: {
     vid: {},
+    topic_tags: [],
+    partition_tags: [],
+    partitionMounted: false,
+    partitionClosing: false,
+    partitionAnimTimer: 0,
     liked: false,
     likeRequestPending: false,
     coined: false,
@@ -479,6 +511,69 @@ export default {
   async GetVideoDetail() {
     this.vid = await global.biliclient.getVideoInfoByBVID(this.bvid)
     this.renderingCover = true
+    this.topic_tags = []
+    this.partition_tags = []
+    this.LoadVideoTopics()
+  },
+  async LoadVideoTopics() {
+    try {
+      const tags = await global.biliclient.getVideoTagsByBVID(this.bvid)
+      const topics = []
+      const partitions = []
+      ;(tags || []).forEach((tag) => {
+        if (!tag || !tag.tag_id || !tag.tag_name) return
+        const item = {
+          id: String(tag.tag_id),
+          name: String(tag.tag_name)
+        }
+        if (tag.tag_type === "topic") {
+          topics.push(item)
+        } else if (tag.tag_type === "old_channel") {
+          partitions.push(item)
+        }
+      })
+      this.topic_tags = topics
+      this.partition_tags = partitions
+    } catch (e) {
+      global.logger.error("获取视频话题/分区失败: ", e)
+      this.topic_tags = []
+      this.partition_tags = []
+    }
+  },
+  OpenTopic(id, name) {
+    if (!id) return
+    router.push({
+      uri: "pages/topic",
+      params: {
+        topicId: String(id),
+        topicName: String(name || "")
+      }
+    })
+  },
+  OpenPartition(item) {
+    if (!item || !item.name) return
+    this.ClosePartitionPicker()
+    router.push({
+      uri: "pages/search/searchresult",
+      params: {
+        keyword: item.name
+      }
+    })
+  },
+  OpenPartitionPicker() {
+    if (this.partition_tags.length <= 1) return
+    clearTimeout(this.partitionAnimTimer)
+    this.partitionClosing = false
+    this.partitionMounted = true
+  },
+  ClosePartitionPicker() {
+    clearTimeout(this.partitionAnimTimer)
+    if (!this.partitionMounted || this.partitionClosing) return
+    this.partitionClosing = true
+    this.partitionAnimTimer = setTimeout(() => {
+      this.partitionMounted = false
+      this.partitionClosing = false
+    }, 180)
   },
   async UpdateVideoToolbarStatus() {
     this.stared = await global.biliclient.isVideoStaredByBVID(this.bvid)
@@ -671,8 +766,23 @@ export default {
   BuildVideoInfoText() {
     const title = this.vid.title || "未知"
     const bvid = this.vid.bvid || this.bvid || "未知"
+    const rawTimestamp = this.vid.pubdate !== undefined && this.vid.pubdate !== null
+      ? this.vid.pubdate
+      : this.vid.ctime
+    const timestamp = Number(rawTimestamp) || 0
+    global.logger.log("[videodetail] publish timestamp=", rawTimestamp, "type=", typeof rawTimestamp)
+    let publishTime = "未知"
+    if (timestamp > 0) {
+      try {
+        const date = new Date(timestamp * 1000)
+        const pad = (n) => (n < 10 ? "0" + n : "" + n)
+        publishTime = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
+      } catch (e) {
+        global.logger.error("[videodetail] format publish time failed: ", e)
+      }
+    }
     const desc = this.vid.desc || "暂无简介"
-    return `【视频信息】\n标题：${title}\nBV号：${bvid}\n简介：\n${desc}`
+    return `【视频信息】\n标题：${title}\nBV号：${bvid}\n发布时间：${publishTime}\n简介：\n${desc}`
   },
   formatSummaryDuration(sec) {
     const total = Math.max(0, parseInt(sec, 10) || 0)

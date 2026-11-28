@@ -4,34 +4,119 @@
 <template>
   <div class="page">
     <image style="position: absolute; left: 0px" src="{{getBgImg}}" static></image>
-    <scroll class="scroll {{scrclass}}" scroll-y="true" bounces="true">
-      <switch-bar title="dynamic.title" static></switch-bar>
-      <div class="waterfall" if="show_content">
-        <div class="waterfall-column">
-          <dyn-show for="{{dynamic.render_split_1}}" dyn="{{$item}}"></dyn-show>
+    <scroll scroll-y="true" id="dynscroll" class="scroll {{scrclass}}" bounces="true">
+      <switch-bar title="dynamic.title" action-text="dynamic.publish.entry" @action-click="OpenPublish"></switch-bar>
+      <!-- 动态标签页：全部 / 投稿 / 专栏 / UP -->
+      <div class="typebar">
+        <div class="typetab" @click="SwitchTab(0)">
+          <text class="typetext" style="color: {{typebar_colors.c1}};">{{ $t("dynamic.tabs.all") }}</text>
         </div>
-        <div class="waterfall-column">
-          <dyn-show for="{{dynamic.render_split_2}}" dyn="{{$item}}"></dyn-show>
+        <div class="typetab" @click="SwitchTab(1)">
+          <text class="typetext" style="color: {{typebar_colors.c2}};">{{ $t("dynamic.tabs.video") }}</text>
+        </div>
+        <div class="typetab" @click="SwitchTab(2)">
+          <text class="typetext" style="color: {{typebar_colors.c3}};">{{ $t("dynamic.tabs.article") }}</text>
+        </div>
+        <div class="typetab" @click="SwitchTab(3)">
+          <text class="typetext" style="color: {{typebar_colors.c4}};">{{ $t("dynamic.tabs.up") }}</text>
         </div>
       </div>
+
+      <!-- 全部 / 投稿 / 专栏：动态瀑布流 -->
+      <div class="waterfall" if="{{current_tab != 3 && show_content}}">
+        <div class="waterfall-column">
+          <dyn-show for="{{render_split_1}}" dyn="{{$item}}"></dyn-show>
+        </div>
+        <div class="waterfall-column">
+          <dyn-show for="{{render_split_2}}" dyn="{{$item}}"></dyn-show>
+        </div>
+      </div>
+      <div class="empty_tip_wrap" if="{{current_tab != 3 && show_content && !render_split_1.length && !render_split_2.length}}">
+        <text class="empty-tip">{{ $t("dynamic.empty") }}</text>
+      </div>
+      <div class="empty_tip_wrap" if="{{current_tab != 3 && load_failed}}" @click="RetryLoad">
+        <text class="empty-tip">{{ $t("dynamic.retry") }}</text>
+      </div>
+
+      <!-- UP：关注的 UP 列表 -->
+      <div class="up_area" if="{{current_tab == 3 && !up_selected && !anims.show_loading}}">
+        <div class="up_row" for="{{up_list}}" @click="OpenUp($item.mid, $item.uname)">
+          <div class="up_left">
+            <image class="up_face" src="{{$item.face}}" alt="/common/fullgray.png"></image>
+            <text class="up_name">{{ $item.uname }}</text>
+          </div>
+          <div class="up_dot" if="{{$item.has_update}}"></div>
+        </div>
+        <div class="empty_tip_wrap" if="{{!up_list.length}}" @click="LoadUpList">
+          <text class="empty-tip">{{ up_loaded ? $t("dynamic.up.empty") : $t("dynamic.retry") }}</text>
+        </div>
+      </div>
+
+      <!-- UP：某个 UP 的动态 -->
+      <div class="up_detail" if="{{current_tab == 3 && up_selected}}">
+        <div class="up_header" @click="BackToUpList">
+          <div class="up_header_back">
+            <image src="/common/changepage_left.png" static
+              style="width: 32px; height: 32px; object-fit: scale-down"></image>
+            <text class="up_header_back_text">{{ $t("dynamic.tabs.up") }}</text>
+          </div>
+          <text class="up_header_name">{{ up_name }}</text>
+        </div>
+        <div class="waterfall" if="{{show_up_content}}">
+          <div class="waterfall-column">
+            <dyn-show for="{{up_split_1}}" dyn="{{$item}}"></dyn-show>
+          </div>
+          <div class="waterfall-column">
+            <dyn-show for="{{up_split_2}}" dyn="{{$item}}"></dyn-show>
+          </div>
+        </div>
+        <div class="empty_tip_wrap" if="{{show_up_content && !up_split_1.length && !up_split_2.length}}">
+          <text class="empty-tip">{{ $t("dynamic.empty") }}</text>
+        </div>
+        <div class="empty_tip_wrap" if="{{load_failed}}" @click="RetryLoad">
+          <text class="empty-tip">{{ $t("dynamic.retry") }}</text>
+        </div>
+      </div>
+
       <!-- 此处无数据绑定，添加static属性 -->
       <text style="margin-top: 25px" static></text>
     </scroll>
-    <image style="position: absolute; margin-top: 245px" if="{{anims.show_loading}}" src="{{anims.loading_src.value}}"></image>
+    <image class="loading-spin" style="position: absolute; margin-top: 245px"
+      if="{{anims.show_loading}}" src="{{anims.loading_src.value}}"></image>
   </div>
 </template>
 
 <script>
+import router from "@system.router"
+import prompt from "@system.prompt"
+
 export default {
   private: {
     scrclass: "",
+    current_tab: 0,
+    typebar_colors: {
+      c1: "#0851ac",
+      c2: "#919191",
+      c3: "#919191",
+      c4: "#919191"
+    },
+    // 全部 / 投稿 / 专栏 的瀑布流
     show_content: false,
+    all_items: [],
+    render_split_1: [],
+    render_split_2: [],
+    // UP 分区
+    up_loaded: false,
+    load_failed: false,
+    up_list: [],
+    up_selected: false,
+    up_mid: 0,
+    up_name: "",
+    show_up_content: false,
+    up_split_1: [],
+    up_split_2: [],
     anims: {
       show_loading: false
-    },
-    dynamic: {
-      render_split_1: [],
-      render_split_2: []
     }
   },
   computed: {
@@ -53,26 +138,291 @@ export default {
 
     return { arr1, arr2 };
   },
-  async LoadDynamics() {
+  OpenPublish() {
+    router.push({uri: "pages/app/features/dynamic/publish"})
+  },
+  ResetScrollTop() {
+    if (!this.$nextTick || !this.$element) {
+      return
+    }
+    this.$nextTick(() => {
+      const scroller = this.$element("dynscroll")
+      if (scroller && scroller.scrollTo) {
+        scroller.scrollTo({ top: 0 })
+      }
+    })
+  },
+  SwitchTab(index) {
+    if (this.current_tab == index) {
+      return
+    }
+    // 作废上一个标签页未完成的请求；手表内存有限，不跨标签缓存动态列表
+    this._reqSeq++
+    this.anims.loading.stop()
+    this.anims.show_loading = false
+    this.load_failed = false
+    this.current_tab = index
+    this.typebar_colors = {
+      c1: index == 0 ? "#0851ac" : "#919191",
+      c2: index == 1 ? "#0851ac" : "#919191",
+      c3: index == 2 ? "#0851ac" : "#919191",
+      c4: index == 3 ? "#0851ac" : "#919191"
+    }
+    this.show_content = false
+    this.render_split_1 = []
+    this.render_split_2 = []
+    this.show_up_content = false
+    this.up_split_1 = []
+    this.up_split_2 = []
+
+    if (index == 3) {
+      if (this.up_selected) {
+        this.LoadUpDynamics(this.up_mid)
+      } else if (!this.up_loaded) {
+        this.LoadUpList()
+      }
+    } else {
+      const types = ["all", "video", "article"]
+      this.LoadDynamics(types[index], index)
+    }
+    this.ResetScrollTop()
+  },
+  OpenUp(mid, name) {
+    if (this.anims.show_loading) {
+      return
+    }
+    this.up_selected = true
+    this.up_mid = mid
+    this.up_name = name
+    this.LoadUpDynamics(mid)
+    this.ResetScrollTop()
+  },
+  BackToUpList() {
+    // 返回 UP 列表时作废未完成的请求，避免迟到的响应把动态重新写回页面
+    this._reqSeq++
+    this.up_selected = false
+    this.show_up_content = false
+    this.up_split_1 = []
+    this.up_split_2 = []
+    this.anims.loading.stop()
+    this.anims.show_loading = false
+    this.ResetScrollTop()
+  },
+  // 加载失败后点击重试当前视图
+  RetryLoad() {
+    if (this.current_tab == 3) {
+      if (this.up_selected) {
+        this.LoadUpDynamics(this.up_mid)
+      } else {
+        this.LoadUpList()
+      }
+      return
+    }
+    const types = ["all", "video", "article"]
+    this.LoadDynamics(types[this.current_tab], this.current_tab)
+  },
+  normalizeFace(face) {
+    if (!face) {
+      return "/common/fullgray.png"
+    }
+    let url = face
+    if (url.indexOf("//") === 0) {
+      url = "https:" + url
+    }
+    if (url.indexOf("@") === -1) {
+      url += "@60w_60h"
+    }
+    return url
+  },
+  async LoadUpList() {
+    const seq = ++this._reqSeq
+    this.load_failed = false
+    this.anims.show_loading = true
+    this.anims.loading.start()
+
     try {
-      this.anims.loading.start();
+      const list = await global.biliclient.getDynamicUpList()
+      if (seq !== this._reqSeq) {
+        return
+      }
+      const me = global.biliclient.accountInfo
+      const mapped = []
+      if (me && me.mid) {
+        mapped.push({
+          mid: me.mid,
+          uname: this.$t("dynamic.up.me"),
+          face: this.normalizeFace(me.face),
+          has_update: false
+        })
+      }
+      list.forEach((item) => {
+        mapped.push({
+          mid: item.mid,
+          uname: item.uname || "",
+          face: this.normalizeFace(item.face),
+          has_update: !!item.has_update
+        })
+      })
+      this.up_list = mapped
+      this.up_loaded = true
+    } catch (error) {
+      if (seq !== this._reqSeq) {
+        return
+      }
+      this.load_failed = true
+      global.logger.error("获取关注UP列表时出错:", error)
+      prompt.showToast({ message: "获取UP列表失败，请重试。" })
+    } finally {
+      if (seq === this._reqSeq) {
+        this.anims.loading.stop()
+        this.anims.show_loading = false
+      }
+    }
+  },
+  async LoadUpDynamics(mid) {
+    const seq = ++this._reqSeq
+    this.load_failed = false
+    this.anims.show_loading = true
+    this.anims.loading.start()
+    this.show_up_content = false
+    this.up_split_1 = []
+    this.up_split_2 = []
 
-      var dynamic = await global.biliclient.getDynamicList();
-      var split_result = this.SplitWaterfallArea(dynamic.items);
-      
-      this.dynamic.render_split_1.splice(0, this.dynamic.render_split_1.length, ...split_result.arr1);
-      this.dynamic.render_split_2.splice(0, this.dynamic.render_split_2.length, ...split_result.arr2);
+    try {
+      const dynamic = await global.biliclient.getDynamicList(mid, 0, "all")
+      if (seq !== this._reqSeq) {
+        return
+      }
+      const items = (dynamic && dynamic.items) || []
+      const split = this.SplitWaterfallArea(items)
+      this.up_split_1 = split.arr1
+      this.up_split_2 = split.arr2
+      this.show_up_content = true
+    } catch (error) {
+      if (seq !== this._reqSeq) {
+        return
+      }
+      this.load_failed = true
+      global.logger.error("获取UP动态时出错:", error)
+      prompt.showToast({ message: "获取动态失败，请重试。" })
+    } finally {
+      if (seq === this._reqSeq) {
+        this.anims.loading.stop()
+        this.anims.show_loading = false
+      }
+    }
+  },
+  async LoadDynamics(type, tabIndex) {
+    const seq = ++this._reqSeq
+    this.load_failed = false
+    this.anims.show_loading = true
+    this.anims.loading.start()
+    this.show_content = false
+    this.render_split_1 = []
+    this.render_split_2 = []
 
-      this.anims.loading.stop();
-      this.anims.show_loading = false;
-      this.show_content = true;
-    } catch (e) {
-      global.logger.error(e.toString());
+    try {
+      const dynamic = await global.biliclient.getDynamicList(0, 0, type)
+      if (seq !== this._reqSeq) {
+        return
+      }
+      const items = (dynamic && dynamic.items) || []
+      this.all_items = items
+      const split = this.SplitWaterfallArea(items)
+      this.render_split_1 = split.arr1
+      this.render_split_2 = split.arr2
+      this.show_content = true
+    } catch (error) {
+      if (seq !== this._reqSeq) {
+        return
+      }
+      this.load_failed = true
+      global.logger.error("获取动态时出错:", error)
+      prompt.showToast({ message: "获取动态失败，请重试。" })
+    } finally {
+      if (seq === this._reqSeq) {
+        this.anims.loading.stop()
+        this.anims.show_loading = false
+      }
+    }
+  },
+  onInit() {
+    // 请求序号：切换标签页 / 返回 UP 列表时作废未完成的动态请求
+    this._reqSeq = 0
+  },
+  GetDynamicId(item) {
+    if (!item) {
+      return ""
+    }
+    return String(item.id_str || item.id || "")
+  },
+  async InjectPublishedDynamic(id) {
+    const seq = this._reqSeq
+    try {
+      let detail = null
+      try {
+        detail = await global.biliclient.getDynamicDetail(id)
+      } catch (firstError) {
+        // 刚发布时服务端索引可能还没完成，稍后重试一次
+        await new Promise((resolve) => setTimeout(resolve, 800))
+        detail = await global.biliclient.getDynamicDetail(id)
+      }
+      const item = detail && detail.item
+      if (!item || this.current_tab !== 0 || seq !== this._reqSeq) {
+        return
+      }
+      const newId = this.GetDynamicId(item)
+      const exists = (this.all_items || []).some((old) => this.GetDynamicId(old) === newId)
+      if (exists) {
+        return
+      }
+      // 关注流通常不会立刻包含刚发布的动态，手动插到首列
+      const items = [item].concat(this.all_items || [])
+      this.all_items = items
+      const split = this.SplitWaterfallArea(items)
+      this.render_split_1 = split.arr1
+      this.render_split_2 = split.arr2
+      this.show_content = true
+    } catch (error) {
+      global.logger.error("加载刚发布的动态失败:", error)
+    }
+  },
+  async onShow() {
+    const published = global.publishedDynamicResult
+    const dirty = global.dynamicListDirty
+    if (!published && !dirty) {
+      return
+    }
+    global.publishedDynamicResult = null
+    global.dynamicListDirty = false
+    this.up_selected = false
+    this.current_tab = 0
+    this.typebar_colors = {
+      c1: "#0851ac",
+      c2: "#919191",
+      c3: "#919191",
+      c4: "#919191"
+    }
+    await this.LoadDynamics("all", 0)
+    this.ResetScrollTop()
+    if (published && !this.load_failed && this.current_tab === 0 && published.id) {
+      this.InjectPublishedDynamic(published.id)
     }
   },
   onReady() {
     global.animengine.defaults.loading.CreateLoadingAnimation(this);
-    this.LoadDynamics();
+
+    // UP 动态属于页内二级视图：返回键先回 UP 列表，而不是直接退出页面
+    this.$options.onBackPress = () => {
+      if (this.up_selected) {
+        this.BackToUpList()
+        return true
+      }
+      global.ui.OnBackPressTriggered()
+      return true
+    }
+
+    this.LoadDynamics("all", 0)
   }
 }
 </script>

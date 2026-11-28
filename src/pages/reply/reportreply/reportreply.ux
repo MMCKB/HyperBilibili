@@ -3,25 +3,26 @@
 <import name="full-screen-input" src="@components/FullScreenInput/FullScreenInput.ux"></import>
 
 <template>
-  <div class="page">
-    <scroll scroll-y="true" class="scroll {{scrclass}}" bounces="true">
-      <title-bar title="reportreply.title"></title-bar>
+  <div class="page card-enter {{scrclass}}">
+    <scroll scroll-y="true" class="report-scroll" bounces="true">
+      <title-bar title="{{ reportKind === 'dynamic' ? 'reportreply.dynamicTitle' : 'reportreply.title' }}"></title-bar>
       <div class="report-target">
-        <text class="report-target-title">举报 {{ uname || "该用户" }} 的评论</text>
+        <text class="report-target-title" if="{{ reportKind === 'dynamic' }}">{{ $t("reportreply.dynamicTarget") }}</text>
+        <text class="report-target-title" else>举报 {{ uname || "该用户" }} 的评论</text>
         <text class="report-target-excerpt">{{ excerpt || "（无文字内容）" }}</text>
       </div>
       <text class="report-label">选择举报理由</text>
       <div class="report-reasons">
         <div class="report-reason {{ selectedReason === $item.reason ? 'report-reason-selected' : '' }}"
-          for="{{reasons}}" @click="SelectReason($item)">
+          for="{{reasons}}" @click="SelectReason($idx)">
           <text class="report-reason-text {{ selectedReason === $item.reason ? 'report-reason-text-selected' : '' }}">{{ $item.label }}</text>
-          <image class="report-reason-check" if="{{ selectedReason === $item.reason }}" src="/common/trueicon.png"></image>
+          <text class="report-reason-check {{ selectedReason === $item.reason ? 'report-reason-check-on' : '' }}">✓</text>
         </div>
       </div>
       <div class="report-other" if="{{ selectedReason === 0 }}" @click="EditOtherReason">
         <text class="report-other-text {{ otherText ? '' : 'report-other-placeholder' }}">{{ otherText || "填写举报理由（必填）" }}</text>
       </div>
-      <div class="report-blacklist" @click="ToggleBlacklist">
+      <div class="report-blacklist" if="{{ reportKind !== 'dynamic' }}" @click="ToggleBlacklist">
         <text class="report-blacklist-text">同时拉黑该用户</text>
         <text class="report-blacklist-value">{{ addBlacklist ? "✓" : "○" }}</text>
       </div>
@@ -44,7 +45,11 @@ export default {
     oid: "",
     rpid: "",
     uname: "",
-    excerpt: ""
+    excerpt: "",
+    // reply：举报评论；dynamic：举报动态
+    reportKind: "reply",
+    dynId: "",
+    accusedUid: ""
   },
   private: {
     selectedReason: -1,
@@ -71,12 +76,11 @@ export default {
       {reason: 0, label: "其它"}
     ]
   },
-  SelectReason(item) {
+  SelectReason(index) {
+    const item = this.reasons[index]
     if (!item) return
     this.selectedReason = item.reason
-    if (item.reason === 0) {
-      this.EditOtherReason()
-    }
+    // “其它”只展开输入框，不自动唤起键盘，避免选择时卡顿
   },
   EditOtherReason() {
     this.otherMode = true
@@ -111,21 +115,32 @@ export default {
   async DoReport() {
     this.submitPending = true
     try {
-      const result = await global.biliclient.reportReply(
-        String(this.type),
-        String(this.oid),
-        String(this.rpid),
-        this.selectedReason,
-        this.otherText,
-        this.addBlacklist
-      )
+      const result = this.reportKind === "dynamic"
+        ? await global.biliclient.reportDynamic(
+            this.accusedUid,
+            this.dynId,
+            this.selectedReason,
+            this.otherText
+          )
+        : await global.biliclient.reportReply(
+            String(this.type),
+            String(this.oid),
+            String(this.rpid),
+            this.selectedReason,
+            this.otherText,
+            this.addBlacklist
+          )
       const code = result ? Number(result.code) : -1
       if (code === 0 || code === 12008) {
         prompt.showToast({
           message: code === 0 ? (this.addBlacklist ? "举报成功，已拉黑该用户" : "举报成功，感谢反馈") : "已经举报过了"
         })
         setTimeout(() => {
-          router.back()
+          if (global.ui && global.ui.OnBackPressTriggered) {
+            global.ui.OnBackPressTriggered()
+          } else {
+            router.back()
+          }
         }, 600)
       } else {
         prompt.showToast({
@@ -136,11 +151,26 @@ export default {
         })
       }
     } catch (e) {
-      global.logger.error("举报评论失败: ", e)
+      global.logger.error("举报失败: ", e)
       prompt.showToast({message: "举报失败，请重试", duration: 3000})
     } finally {
       this.submitPending = false
     }
+  },
+  onInit() {
+    if (this.reportKind !== "dynamic") return
+    this.reasons = [
+      {reason: 4, label: "垃圾广告"},
+      {reason: 8, label: "引战"},
+      {reason: 1, label: "色情"},
+      {reason: 5, label: "人身攻击"},
+      {reason: 3, label: "违法信息"},
+      {reason: 9, label: "涉政谣言"},
+      {reason: 10, label: "涉社会事件谣言"},
+      {reason: 12, label: "虚假不实信息"},
+      {reason: 13, label: "违法信息外链"},
+      {reason: 0, label: "其它"}
+    ]
   }
 }
 </script>

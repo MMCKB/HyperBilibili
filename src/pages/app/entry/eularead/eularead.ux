@@ -3,7 +3,7 @@
 
 <template>
   <div class="page card-enter">
-    <image style="position: absolute; margin-top: 300px" if="{{anims.show_loading}}" src="{{anims.loading_src.value}}"></image>
+    <image class="loading-spin" style="position: absolute; margin-top: 300px" if="{{anims.show_loading}}" src="{{anims.loading_src.value}}"></image>
     <text style="font-weight: 600; margin-top: 45px; font-size: 40px">{{ $t("eularead.title") }}</text>
     <text style="font-weight: 600; margin-top: 15px; font-size: 24px; width: 75%">{{ $t("eularead.sectitle") }}</text>
     <div if="{{show_content}}" style="margin-top: 20px; width: 75%; flex-direction: column; align-items: center">

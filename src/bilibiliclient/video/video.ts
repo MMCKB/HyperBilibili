@@ -6,11 +6,58 @@ export const BilibiliClientVideoMethods = {
         return response.data.data.item;
     },
 
+    // 获取热门视频（综合热门，支持分页）
+    async getPopularVideos(this: any, pn: number, pagesize: number): Promise<any> {
+        const url = `https://api.bilibili.com/x/web-interface/popular?pn=${pn}&ps=${pagesize}`;
+        const response = await this.getRequest(url);
+        if (!response || !response.data) {
+            throw new Error("empty response");
+        }
+        if (response.data.code !== 0) {
+            throw new Error(response.data.message || `code ${response.data.code}`);
+        }
+        return {
+            list: (response.data.data && response.data.data.list) || [],
+            no_more: !!(response.data.data && response.data.data.no_more)
+        };
+    },
+
+    // 获取分区排行榜视频（rid 为排行榜分区 id，0 表示全站）
+    async getRankVideosByRid(this: any, rid: number): Promise<any> {
+        const url = "https://api.bilibili.com/x/web-interface/ranking/v2";
+        let response: any;
+        if (this.accountInfo && this.accountInfo.wbi_img) {
+            response = await this.getRequestWbi(url, { rid: String(rid), type: "all" });
+        } else {
+            response = await this.getRequest(`${url}?rid=${rid}&type=all`);
+        }
+        if (!response || !response.data) {
+            throw new Error("empty response");
+        }
+        if (response.data.code !== 0) {
+            throw new Error(response.data.message || `code ${response.data.code}`);
+        }
+        return (response.data.data && response.data.data.list) || [];
+    },
+
     // 根据视频BV号获取视频详情信息
     async getVideoInfoByBVID(this: any, bvid: string): Promise<any> {
         const url = `https://api.bilibili.com/x/web-interface/view?bvid=${bvid}`;
         const response = await this.getRequest(url);
         return response.data.data;
+    },
+
+    // 获取视频标签（其中 tag_type 为 topic 的即为话题标签）
+    async getVideoTagsByBVID(this: any, bvid: string): Promise<any[]> {
+        const url = `https://api.bilibili.com/x/web-interface/view/detail/tag?bvid=${encodeURIComponent(bvid)}`;
+        const response = await this.getRequest(url);
+        if (!response || !response.data) {
+            throw new Error("empty response");
+        }
+        if (response.data.code !== 0) {
+            throw new Error(response.data.message || `code ${response.data.code}`);
+        }
+        return response.data.data || [];
     },
 
     // 判断视频是否被点赞

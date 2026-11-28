@@ -1,0 +1,165 @@
+<import name="title-bar" src="@components/TitleBar/TitleBar.ux"></import>
+<import name="online-image" src="@components/BetterOnlineImage/BetterOnlineImage.ux"></import>
+
+<template>
+  <div class="page card-enter {{scrclass}}">
+    <scroll scroll-y="true" class="scroll {{scrclass}}" bounces="true">
+      <title-bar title="专栏阅读"></title-bar>
+      <div class="opus-header" if="{{showArticle}}">
+        <text class="opus-title">{{ title }}</text>
+        <div class="opus-author" @click="OpenAuthor">
+          <image class="opus-author-avatar" src="{{author.face}}" alt="/common/fullgray.png"></image>
+          <div class="opus-author-info">
+            <text class="opus-author-name">{{ author.name }}</text>
+            <text class="opus-author-time" if="{{author.pub_time}}">{{ author.pub_time }}</text>
+          </div>
+        </div>
+      </div>
+      <div class="opus-content" if="{{showArticle}}">
+        <div class="opus-block" for="{{blocks}}">
+          <text class="opus-text" if="{{$item.type == 'text'}}">{{ $item.text }}</text>
+          <online-image class="opus-image" if="{{$item.type == 'image'}}" width="340px"
+            height="{{$item.height}}px" lock-size="true" loading-anim="true" src="{{$item.url}}@340w"></online-image>
+        </div>
+      </div>
+      <text class="opus-error" if="{{loadFailed}}" @click="RetryLoad">专栏加载失败，点击重试</text>
+      <text style="margin-top: 50px"></text>
+    </scroll>
+    <image class="loading-spin" style="position: absolute; margin-top: 245px"
+      if="{{anims.show_loading}}" src="{{anims.loading_src.value}}"></image>
+  </div>
+</template>
+
+<script>
+import router from "@system.router"
+
+export default {
+  public: {
+    opusId: ""
+  },
+  private: {
+    scrclass: "",
+    showArticle: false,
+    loadFailed: false,
+    title: "",
+    author: {
+      mid: "",
+      name: "",
+      face: "/common/fullgray.png",
+      pub_time: ""
+    },
+    blocks: [],
+    anims: {
+      show_loading: false
+    }
+  },
+  GetModule(modules, type) {
+    for (let i = 0; i < modules.length; i++) {
+      if (modules[i] && modules[i].module_type === type) {
+        return modules[i]
+      }
+    }
+    return null
+  },
+  NormalizeUrl(url) {
+    let value = String(url || "")
+    if (value.indexOf("//") === 0) value = "https:" + value
+    return value
+  },
+  BuildBlocks(paragraphs) {
+    const blocks = []
+    ;(paragraphs || []).forEach((para) => {
+      if (!para) return
+      if (para.pic && Array.isArray(para.pic.pics) && para.pic.pics.length) {
+        para.pic.pics.forEach((pic) => {
+          const width = Number(pic.width) || 340
+          const height = Number(pic.height) || 200
+          const displayHeight = Math.max(80, Math.min(380, Math.round(height * 340 / width)))
+          blocks.push({
+            type: "image",
+            url: this.NormalizeUrl(pic.url),
+            height: displayHeight
+          })
+        })
+        return
+      }
+      if (para.text && Array.isArray(para.text.nodes)) {
+        let text = ""
+        para.text.nodes.forEach((node) => {
+          if (!node) return
+          if (node.word && node.word.words) {
+            text += node.word.words
+          } else if (node.text) {
+            text += node.text
+          }
+        })
+        if (text.trim()) {
+          blocks.push({
+            type: "text",
+            text: text
+          })
+        }
+      }
+    })
+    return blocks
+  },
+  async LoadOpus() {
+    if (!this.opusId) {
+      this.loadFailed = true
+      return
+    }
+    this.loadFailed = false
+    this.showArticle = false
+    this.anims.show_loading = true
+    this.anims.loading.start()
+    try {
+      const item = await global.biliclient.getOpusDetail(this.opusId)
+      if (!item) throw new Error("empty opus")
+      const modules = item.modules || []
+      const titleModule = this.GetModule(modules, "MODULE_TYPE_TITLE")
+      const authorModule = this.GetModule(modules, "MODULE_TYPE_AUTHOR")
+      const contentModule = this.GetModule(modules, "MODULE_TYPE_CONTENT")
+      this.title = titleModule && titleModule.module_title ? String(titleModule.module_title.text || "") : ""
+      const author = (authorModule && authorModule.module_author) || {}
+      this.author = {
+        mid: String(author.mid || ""),
+        name: String(author.name || ""),
+        face: this.NormalizeUrl(author.face) || "/common/fullgray.png",
+        pub_time: String(author.pub_time || "")
+      }
+      const paragraphs = contentModule && contentModule.module_content
+        ? contentModule.module_content.paragraphs
+        : []
+      this.blocks = this.BuildBlocks(paragraphs)
+      this.showArticle = true
+    } catch (e) {
+      global.logger.error("获取 opus 专栏失败: ", e)
+      this.loadFailed = true
+    } finally {
+      this.anims.loading.stop()
+      this.anims.show_loading = false
+    }
+  },
+  RetryLoad() {
+    this.LoadOpus()
+  },
+  OpenAuthor() {
+    if (!this.author.mid) return
+    router.push({
+      uri: "pages/user",
+      params: {
+        uid: this.author.mid
+      }
+    })
+  },
+  onInit() {
+    global.animengine.defaults.loading.CreateLoadingAnimation(this)
+    this.LoadOpus()
+  }
+}
+</script>
+
+<style lang="less">
+@import "@less/global.less";
+@import "./opusshow.less";
+</style>

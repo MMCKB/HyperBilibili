@@ -1,0 +1,254 @@
+<import name="title-bar" src="@components/TitleBar/TitleBar.ux"></import>
+<import name="full-screen-input" src="@components/FullScreenInput/FullScreenInput.ux"></import>
+
+<template>
+  <div class="page">
+    <scroll scroll-y="true" class="scroll {{scrclass}}" bounces="true">
+      <title-bar title="{{ hadVote ? 'dynamic.publish.vote.editTitle' : 'dynamic.publish.vote.title' }}"></title-bar>
+      <div class="vote-form">
+        <div class="field-card" @click="OpenTitleInput">
+          <div class="field-head">
+            <text class="field-label">{{ $t("dynamic.publish.vote.voteTitle") }}</text>
+            <text class="field-count">{{ titleCount }}/32</text>
+          </div>
+          <text class="field-value {{voteTitle ? '' : 'field-placeholder'}}">
+            {{ voteTitle || $t("dynamic.publish.vote.voteTitlePlaceholder") }}
+          </text>
+        </div>
+
+        <div class="field-card" @click="OpenDescInput">
+          <div class="field-head">
+            <text class="field-label">{{ $t("dynamic.publish.vote.voteDesc") }}</text>
+            <text class="field-count">{{ descCount }}/100</text>
+          </div>
+          <text class="field-value {{voteDesc ? '' : 'field-placeholder'}}">
+            {{ voteDesc || $t("dynamic.publish.vote.voteDescPlaceholder") }}
+          </text>
+        </div>
+
+        <text class="section-label">{{ $t("dynamic.publish.vote.options") }}</text>
+        <div class="field-card option-field" for="{{voteOptions}}" @click="OpenOptionInput($idx)">
+          <div class="field-head">
+            <text class="field-label">{{ $t("dynamic.publish.vote.option") }} {{ $idx + 1 }}</text>
+            <text class="field-count">{{ optionCount($idx) }}/20</text>
+          </div>
+          <text class="field-value {{$item ? '' : 'field-placeholder'}}">
+            {{ $item || $t("dynamic.publish.vote.optionPlaceholder") }}
+          </text>
+        </div>
+
+        <div class="small-action" @click="AddOption">
+          <text class="small-action-text">{{ $t("dynamic.publish.vote.addOption") }}</text>
+        </div>
+        <div class="small-action" if="{{voteOptions.length > 2}}" @click="RemoveLastOption">
+          <text class="small-action-text">{{ $t("dynamic.publish.vote.removeOption") }}</text>
+        </div>
+
+        <div class="toggle-card" @click="ToggleMulti">
+          <text class="field-label">{{ $t("dynamic.publish.vote.multi") }}</text>
+          <div class="switch {{ multiChoice ? 'switch-on' : '' }}">
+            <div class="switch-knob {{ multiChoice ? 'switch-knob-on' : '' }}"></div>
+          </div>
+        </div>
+
+        <div class="control-card">
+          <div class="field-head">
+            <text class="field-label">{{ $t("dynamic.publish.vote.deadline") }}</text>
+            <text class="field-count">{{ $t("dynamic.publish.vote.deadlineHint") }}</text>
+          </div>
+          <div class="deadline-row">
+            <div class="deadline-step" @click="AdjustEndDate(-1)"><text class="deadline-step-text">‹</text></div>
+            <text class="deadline-value">{{ endDateText }}</text>
+            <div class="deadline-step" @click="AdjustEndDate(1)"><text class="deadline-step-text">›</text></div>
+          </div>
+        </div>
+
+        <div class="submit-button" @click="Complete">
+          <text class="submit-text">{{ $t("dynamic.publish.vote.done") }}</text>
+        </div>
+      </div>
+      <text class="bottom-space"></text>
+    </scroll>
+    <full-screen-input style="position: absolute" if="{{inputOpen}}" initial-value="{{inputSeed}}"
+      maxlength="{{inputMax}}" @send="FinishInput" @exit="ExitInput"></full-screen-input>
+  </div>
+</template>
+
+<script>
+import prompt from "@system.prompt"
+
+export default {
+  public: {
+    vote: ""
+  },
+  private: {
+    scrclass: "",
+    voteTitle: "",
+    voteDesc: "",
+    voteOptions: ["", ""],
+    multiChoice: false,
+    endDateOffset: 3,
+    inputOpen: false,
+    inputMode: "",
+    inputIndex: -1,
+    inputSeed: "",
+    inputMax: 32,
+    hadVote: false
+  },
+  computed: {
+    titleCount() {
+      return Array.from(this.voteTitle).length
+    },
+    descCount() {
+      return Array.from(this.voteDesc).length
+    },
+    endDateText() {
+      const target = this.BuildEndTime()
+      return `${target.getFullYear()}年${target.getMonth() + 1}月${target.getDate()}日`
+    }
+  },
+  optionCount(index) {
+    return Array.from(this.voteOptions[index] || "").length
+  },
+  OpenTitleInput() {
+    this.OpenInput("title", this.voteTitle, 32)
+  },
+  OpenDescInput() {
+    this.OpenInput("desc", this.voteDesc, 100)
+  },
+  OpenOptionInput(index) {
+    this.OpenInput("option", this.voteOptions[index] || "", 20)
+    this.inputIndex = index
+  },
+  OpenInput(mode, seed, maxlength) {
+    this.inputMode = mode
+    this.inputSeed = seed
+    this.inputMax = maxlength
+    this.inputOpen = true
+  },
+  FinishInput(evt) {
+    this.inputOpen = false
+    const content = evt.detail.content
+    if (this.inputMode === "title") {
+      this.voteTitle = content
+    } else if (this.inputMode === "desc") {
+      this.voteDesc = content
+    } else if (this.inputMode === "option" && this.inputIndex >= 0) {
+      const next = this.voteOptions.slice()
+      next[this.inputIndex] = content
+      this.voteOptions = next
+    }
+  },
+  ExitInput() {
+    this.inputOpen = false
+  },
+  AddOption() {
+    if (this.voteOptions.length >= 10) {
+      prompt.showToast({message: this.$t("dynamic.publish.vote.optionLimit")})
+      return
+    }
+    this.voteOptions = this.voteOptions.concat([""])
+  },
+  RemoveLastOption() {
+    if (this.voteOptions.length <= 2) return
+    this.voteOptions = this.voteOptions.slice(0, this.voteOptions.length - 1)
+  },
+  ToggleMulti() {
+    this.multiChoice = !this.multiChoice
+  },
+  BuildEndTime() {
+    const now = new Date()
+    return new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate() + this.endDateOffset,
+      23,
+      59,
+      59,
+      0
+    )
+  },
+  AdjustEndDate(delta) {
+    const next = this.endDateOffset + delta
+    if (next < 0 || next > 90) return
+    this.endDateOffset = next
+  },
+  Complete() {
+    const title = this.voteTitle.trim()
+    if (!title) {
+      prompt.showToast({message: this.$t("dynamic.publish.vote.emptyTitle")})
+      return
+    }
+    if (Array.from(title).length > 32) {
+      prompt.showToast({message: this.$t("dynamic.publish.vote.titleTooLong")})
+      return
+    }
+    if (Array.from(this.voteDesc.trim()).length > 100) {
+      prompt.showToast({message: this.$t("dynamic.publish.vote.descTooLong")})
+      return
+    }
+    const options = this.voteOptions.map((text) => text.trim())
+    if (options.length < 2 || options.some((text) => !text)) {
+      prompt.showToast({message: this.$t("dynamic.publish.vote.emptyOption")})
+      return
+    }
+    if (options.some((text) => Array.from(text).length > 20)) {
+      prompt.showToast({message: this.$t("dynamic.publish.vote.optionTooLong")})
+      return
+    }
+    const endTime = this.BuildEndTime()
+    if (endTime.getTime() < Date.now() + 10 * 60 * 1000) {
+      prompt.showToast({message: this.$t("dynamic.publish.vote.deadlineTooSoon")})
+      return
+    }
+
+    global.dynamicEditorResult = {
+      kind: "vote",
+      vote: {
+        title: title,
+        desc: this.voteDesc.trim(),
+        options: options,
+        choiceCnt: this.multiChoice ? options.length : 1,
+        duration: Math.floor((endTime.getTime() - Date.now()) / 1000),
+        endTime: Math.floor(endTime.getTime() / 1000)
+      }
+    }
+    global.ui.OnBackPressTriggered()
+  },
+  onInit() {
+    if (!this.vote) return
+    let parsed = this.vote
+    if (typeof parsed === "string") {
+      try {
+        parsed = JSON.parse(parsed)
+      } catch (e) {
+        parsed = null
+      }
+    }
+    if (!parsed) return
+    this.hadVote = true
+    this.voteTitle = parsed.title || ""
+    this.voteDesc = parsed.desc || ""
+    const options = parsed.options || []
+    this.voteOptions = options.length ? options.slice() : ["", ""]
+    this.multiChoice = Number(parsed.choiceCnt || 1) > 1
+    let endMs = Number(parsed.endTime || 0) * 1000
+    if (!endMs) {
+      endMs = Date.now() + Number(parsed.duration || 259200) * 1000
+    }
+    const end = new Date(endMs)
+    if (!isNaN(end.getTime())) {
+      const now = new Date()
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+      const endDay = new Date(end.getFullYear(), end.getMonth(), end.getDate())
+      const offset = Math.round((endDay.getTime() - today.getTime()) / (24 * 60 * 60 * 1000))
+      this.endDateOffset = Math.max(0, Math.min(90, offset))
+    }
+  }
+}
+</script>
+
+<style lang="less">
+@import "@less/global.less";
+@import "./vote.less";
+</style>

@@ -38,10 +38,300 @@
     .flex-column(10px, #00000000);
 }
 
+.dyn-content-title {
+    font-size: 28px;
+    font-weight: 600;
+    lines: 3;
+    text-overflow: ellipsis;
+}
+
 .dyn-content-text {
     font-size: 22px;
     font-weight: 600;
     text-overflow: ellipsis;
+}
+
+// 点赞 / 收藏
+.detail-actions {
+    width: 76%;
+    margin-top: 14px;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.detail-action {
+    width: 100px;
+    height: 64px;
+    border-radius: 32px;
+    background-color: #262626;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+}
+
+.detail-action-icon {
+    width: 24px;
+    height: 24px;
+    object-fit: scale-down;
+}
+
+.detail-action-text {
+    margin-left: 6px;
+    font-size: 20px;
+    font-weight: 600;
+    color: #9e9e9e;
+}
+
+.detail-action-wide {
+    width: 160px;
+}
+
+.detail-action-text-active {
+    color: #ff7da8;
+}
+
+// 评论区入口
+.detail-comment-entry {
+    width: 322px;
+    height: 72px;
+    margin-top: 15px;
+    border-radius: 36px;
+    background-color: #262626;
+    align-items: center;
+    justify-content: center;
+}
+
+.detail-comment-entry-text {
+    font-size: 30px;
+    font-weight: 600;
+    color: #ffffff;
+}
+
+.comment-closed {
+    width: 76%;
+    margin-top: 14px;
+    font-size: 18px;
+    font-weight: 600;
+    color: #888888;
+    text-align: center;
+}
+
+// 右上角菜单
+.more-overlay {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.65);
+    align-items: center;
+    justify-content: center;
+    transition: opacity 150ms ease;
+}
+
+.more-card {
+    width: 300px;
+    border-radius: 32px;
+    background-color: #2a2a2a;
+    flex-direction: column;
+    align-items: center;
+    padding: 18px;
+}
+
+.more-title {
+    margin-bottom: 10px;
+    font-size: 24px;
+    font-weight: 600;
+}
+
+.more-item {
+    width: 260px;
+    height: 54px;
+    margin-top: 8px;
+    border-radius: 27px;
+    background-color: #262626;
+    align-items: center;
+    justify-content: center;
+}
+
+.more-item-text {
+    font-size: 20px;
+    font-weight: 600;
+    color: #ffffff;
+}
+
+.more-item-danger {
+    color: #ff7da8;
+}
+
+.more-confirm {
+    width: 260px;
+    flex-direction: column;
+    align-items: center;
+}
+
+.more-confirm-text {
+    width: 100%;
+    margin-top: 4px;
+    font-size: 18px;
+    font-weight: 600;
+    color: #9e9e9e;
+    text-align: center;
+    line-height: 26px;
+}
+
+.more-confirm-buttons {
+    width: 100%;
+    margin-top: 14px;
+    flex-direction: row;
+    justify-content: space-between;
+}
+
+.more-button {
+    width: 122px;
+    height: 50px;
+    border-radius: 25px;
+    background-color: #3a3a3a;
+    align-items: center;
+    justify-content: center;
+}
+
+.more-button-danger {
+    background-color: #ff7da8;
+}
+
+.more-button-text {
+    font-size: 20px;
+    font-weight: 600;
+    color: #ffffff;
+}
+
+@keyframes dialog-fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes dialog-panel-in {
+    from { transform: translateY(26px) scale(0.97); }
+    to { transform: translateY(0px) scale(1); }
+}
+
+.modal-entering {
+    animation-name: dialog-fade-in;
+    animation-duration: 180ms;
+    animation-timing-function: ease;
+}
+
+.modal-panel-entering {
+    animation-name: dialog-panel-in;
+    animation-duration: 220ms;
+    animation-timing-function: ease;
+}
+
+.modal-closing {
+    opacity: 0;
+}
+
+// 分享
+.share-overlay {
+    position: absolute;
+    top: 0px;
+    left: 0px;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.7);
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    z-index: 25;
+    transition: opacity 150ms ease;
+}
+
+.share-picker {
+    width: 340px;
+    height: 380px;
+    padding: 20px;
+    border-radius: 16px;
+    background-color: #2a2a2a;
+    flex-direction: column;
+    align-items: center;
+}
+
+.share-header {
+    width: 100%;
+    height: 44px;
+    margin-bottom: 10px;
+    align-items: center;
+}
+
+.share-title {
+    color: #ffffff;
+    font-size: 22px;
+    font-weight: 700;
+}
+
+.share-title-success {
+    color: #6ad88d;
+}
+
+.share-message {
+    width: 100%;
+    height: 56px;
+    margin-bottom: 10px;
+    padding-left: 14px;
+    padding-right: 14px;
+    border-radius: 12px;
+    background-color: #34343b;
+    align-items: center;
+}
+
+.share-message-text {
+    width: 100%;
+    color: #ffffff;
+    font-size: 20px;
+    font-weight: 500;
+    lines: 1;
+    text-overflow: ellipsis;
+}
+
+.share-message-placeholder {
+    color: #9e9e9e;
+}
+
+.share-option {
+    width: 100%;
+    height: 70px;
+    margin-bottom: 10px;
+    border-radius: 18px;
+    background-color: #3a3a3a;
+    align-items: center;
+    justify-content: center;
+}
+
+.share-option-title {
+    color: #ffffff;
+    font-size: 24px;
+    font-weight: 600;
+}
+
+.share-buttons {
+    width: 100%;
+    margin-top: 2px;
+    align-items: center;
+}
+
+.share-cancel {
+    width: 126px;
+    height: 50px;
+    border-radius: 25px;
+    background-color: #34343b;
+    justify-content: center;
+    align-items: center;
+}
+
+.share-cancel-text {
+    color: #d7d7df;
+    font-size: 21px;
+    font-weight: 600;
 }
 
 .ctx-forwarded-box {
@@ -60,4 +350,467 @@
 .ctx-forwarded-txt {
     .font-semibold();
     font-size: 18px;
+}
+
+// 专栏动态卡片
+.ctx-article-box {
+    width: 100%;
+    border-radius: 25px;
+    background-color: #262626;
+    flex-direction: column;
+    padding: 10px;
+}
+
+.ctx-article-cover {
+    width: 100%;
+    height: 140px;
+    border-radius: 15px;
+    object-fit: cover;
+}
+
+.ctx-article-title {
+    margin-top: 8px;
+    font-size: 22px;
+    font-weight: 600;
+    lines: 2;
+    text-overflow: ellipsis;
+}
+
+.ctx-article-desc {
+    margin-top: 5px;
+    font-size: 18px;
+    font-weight: 600;
+    color: #9e9e9e;
+    max-height: 80px;
+    text-overflow: ellipsis;
+}
+// 话题气泡
+.dyn-topics {
+    width: 100%;
+    height: 32px;
+    margin-top: 6px;
+    margin-bottom: 2px;
+    flex-direction: row;
+    align-items: center;
+}
+
+.dyn-topic-chip {
+    height: 28px;
+    padding-left: 10px;
+    padding-right: 10px;
+    margin-right: 8px;
+    border-radius: 14px;
+    background-color: #34343b;
+    align-items: center;
+    justify-content: center;
+}
+
+.dyn-topic-chip-text {
+    font-size: 17px;
+    font-weight: 600;
+    color: #0d84ff;
+    lines: 1;
+    text-overflow: ellipsis;
+}
+
+// @提及（样式对齐评论区）
+.dyn-mentions {
+    width: 100%;
+    margin-top: 2px;
+    flex-direction: row;
+    align-items: center;
+}
+
+.dyn-mention-chip {
+    height: 28px;
+    max-width: 300px;
+    padding-left: 10px;
+    padding-right: 10px;
+    border-radius: 14px;
+    background-color: #34343b;
+    font-size: 17px;
+    font-weight: 600;
+    color: #0d84ff;
+    text-align: center;
+    lines: 1;
+    text-overflow: ellipsis;
+}
+
+.dyn-mention-expand {
+    height: 28px;
+    padding-left: 12px;
+    padding-right: 10px;
+    border-radius: 14px;
+    background-color: #34343b;
+    flex-direction: row;
+    align-items: center;
+}
+
+.dyn-mention-expand-text {
+    font-size: 17px;
+    font-weight: 600;
+    color: #0d84ff;
+}
+
+.dyn-mention-expand-icon {
+    margin-left: 4px;
+    font-size: 16px;
+    font-weight: 600;
+    color: #0d84ff;
+}
+
+// 投票预览卡片
+.dyn-vote-card {
+    width: 100%;
+    margin-top: 10px;
+    padding: 14px;
+    border-radius: 22px;
+    background-color: #262626;
+    flex-direction: column;
+}
+
+.dyn-vote-head {
+    width: 100%;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.dyn-vote-badge {
+    height: 28px;
+    padding-left: 10px;
+    padding-right: 10px;
+    border-radius: 14px;
+    background-color: #34343b;
+    font-size: 17px;
+    font-weight: 600;
+    color: #ff7da8;
+    text-align: center;
+}
+
+.dyn-vote-join {
+    font-size: 17px;
+    font-weight: 600;
+    color: #9e9e9e;
+}
+
+.dyn-vote-title {
+    margin-top: 8px;
+    font-size: 24px;
+    font-weight: 600;
+    max-height: 70px;
+    lines: 2;
+    text-overflow: ellipsis;
+}
+
+.dyn-vote-action {
+    margin-top: 6px;
+    font-size: 16px;
+    font-weight: 600;
+    color: #ff7da8;
+}
+
+// @提及列表弹层
+.mentionmenu-overlay {
+    position: absolute;
+    top: 0px;
+    left: 0px;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.7);
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    z-index: 30;
+    transition: opacity 150ms ease;
+}
+
+.mentionmenu-card {
+    width: 340px;
+    padding: 18px;
+    border-radius: 32px;
+    background-color: #2a2a2a;
+    flex-direction: column;
+    align-items: center;
+}
+
+.mentionmenu-title {
+    width: 100%;
+    height: 36px;
+    font-size: 24px;
+    font-weight: 600;
+    text-align: center;
+}
+
+.mentionmenu-list {
+    width: 100%;
+    height: 250px;
+    flex-direction: column;
+    align-items: center;
+}
+
+.mentionmenu-item {
+    width: 100%;
+    height: 52px;
+    margin-bottom: 6px;
+    padding-left: 12px;
+    border-radius: 14px;
+    background-color: #34343b;
+    flex-direction: row;
+    align-items: center;
+}
+
+.mentionmenu-avatar {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+}
+
+.mentionmenu-name {
+    width: 230px;
+    margin-left: 10px;
+    font-size: 20px;
+    font-weight: 600;
+    color: #ffffff;
+    lines: 1;
+    text-overflow: ellipsis;
+}
+
+.mentionmenu-option {
+    width: 126px;
+    height: 50px;
+    margin-top: 12px;
+    border-radius: 25px;
+    background-color: #34343b;
+    align-items: center;
+    justify-content: center;
+}
+
+.mentionmenu-option-text {
+    color: #d7d7df;
+    font-size: 21px;
+    font-weight: 600;
+}
+
+// 投票面板
+.vote-overlay {
+    position: absolute;
+    top: 0px;
+    left: 0px;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.7);
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    z-index: 40;
+    transition: opacity 150ms ease;
+}
+
+.vote-card {
+    width: 360px;
+    padding: 18px;
+    border-radius: 28px;
+    background-color: #2a2a2a;
+    flex-direction: column;
+    align-items: center;
+}
+
+.vote-card-title {
+    width: 100%;
+    height: 34px;
+    font-size: 26px;
+    font-weight: 600;
+    text-align: center;
+}
+
+.vote-scroll {
+    width: 100%;
+    height: 300px;
+    flex-direction: column;
+}
+
+.vote-title {
+    width: 100%;
+    font-size: 24px;
+    font-weight: 600;
+    lines: 2;
+    text-overflow: ellipsis;
+}
+
+.vote-desc {
+    width: 100%;
+    margin-top: 4px;
+    font-size: 17px;
+    font-weight: 500;
+    color: #9e9e9e;
+    max-height: 50px;
+    text-overflow: ellipsis;
+}
+
+.vote-meta {
+    width: 100%;
+    margin-top: 6px;
+    font-size: 15px;
+    font-weight: 500;
+    color: #888888;
+}
+
+.vote-option {
+    width: 100%;
+    margin-top: 8px;
+    padding: 10px;
+    border-radius: 14px;
+    background-color: #34343b;
+    flex-direction: column;
+}
+
+.vote-option-selected {
+    background-color: #3c3340;
+}
+
+.vote-option-readonly {
+    opacity: 0.92;
+}
+
+.vote-option-row {
+    width: 100%;
+    flex-direction: row;
+    align-items: center;
+}
+
+.vote-option-text {
+    flex: 1;
+    font-size: 19px;
+    font-weight: 600;
+    lines: 2;
+    text-overflow: ellipsis;
+}
+
+.vote-option-percent {
+    margin-left: 8px;
+    font-size: 18px;
+    font-weight: 600;
+    color: #ff7da8;
+}
+
+.vote-option-check {
+    margin-left: 8px;
+    font-size: 18px;
+    font-weight: 600;
+    color: #ff7da8;
+}
+
+.vote-bar {
+    width: 100%;
+    height: 6px;
+    margin-top: 8px;
+    border-radius: 3px;
+    background-color: #262626;
+    flex-direction: row;
+}
+
+.vote-bar-inner {
+    height: 6px;
+    border-radius: 3px;
+    background-color: #ff7da8;
+}
+
+.vote-tip {
+    width: 100%;
+    margin-top: 8px;
+    font-size: 16px;
+    font-weight: 500;
+    color: #9e9e9e;
+    text-align: center;
+}
+
+.vote-buttons {
+    width: 100%;
+    margin-top: 12px;
+    flex-direction: row;
+    justify-content: space-between;
+}
+
+.vote-btn {
+    width: 145px;
+    height: 50px;
+    border-radius: 25px;
+    background-color: #34343b;
+    align-items: center;
+    justify-content: center;
+}
+
+.vote-btn-primary {
+    background-color: #ff7da8;
+}
+
+.vote-btn-disabled {
+    opacity: 0.6;
+}
+
+.vote-btn-text {
+    font-size: 21px;
+    font-weight: 600;
+    color: #ffffff;
+}
+
+.vote-option-image {
+    border-radius: 10px;
+    object-fit: cover;
+}
+
+// 直播动态预览
+.dyn-live-card {
+    width: 100%;
+    padding: 14px;
+    border-radius: 22px;
+    background-color: #262626;
+    flex-direction: column;
+}
+
+.dyn-live-head {
+    width: 100%;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.dyn-live-badge {
+    height: 28px;
+    padding-left: 10px;
+    padding-right: 10px;
+    border-radius: 14px;
+    background-color: #34343b;
+    font-size: 17px;
+    font-weight: 600;
+    color: #ff7da8;
+    text-align: center;
+}
+
+.dyn-live-status {
+    font-size: 17px;
+    font-weight: 600;
+    color: #9e9e9e;
+}
+
+.dyn-live-status-on {
+    color: #ff7da8;
+}
+
+.dyn-live-title {
+    margin-top: 8px;
+    font-size: 24px;
+    font-weight: 600;
+    lines: 2;
+    text-overflow: ellipsis;
+}
+
+.dyn-live-area {
+    margin-top: 4px;
+    font-size: 16px;
+    font-weight: 500;
+    color: #888888;
+    lines: 1;
+    text-overflow: ellipsis;
 }

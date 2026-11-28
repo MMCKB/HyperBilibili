@@ -5,7 +5,7 @@
   <div class="page">
     <scroll scroll-y="true" class="scroll {{scrclass}}" bounces="true">
       <title-bar title="稍后再看"></title-bar>
-      <image style="position: absolute; margin-top: 245px" if="{{anims.show_loading}}"
+      <image class="loading-spin" style="position: absolute; margin-top: 245px" if="{{anims.show_loading}}"
         src="{{anims.loading_src.value}}"></image>
       <div class="later-list" if="{{loaded}}">
         <text class="later-empty" if="{{items.length === 0}}">稍后再看是空的</text>

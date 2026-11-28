@@ -155,6 +155,9 @@
             "pages/article/articleshow": {
                 "component": "articleshow"
             },
+            "pages/article/opusshow": {
+                "component": "opusshow"
+            },
             "pages/article/articlesave": {
                 "component": "articlesave"
             },
@@ -175,6 +178,18 @@
             },
             "pages/app/features/dynamic/detail": {
                 "component": "detail"
+            },
+            "pages/app/features/dynamic/publish": {
+                "component": "publish"
+            },
+            "pages/app/features/dynamic/publish/vote": {
+                "component": "vote"
+            },
+            "pages/app/features/dynamic/publish/reserve": {
+                "component": "reserve"
+            },
+            "pages/topic": {
+                "component": "topic"
             },
             "pages/app/features/settings/opensoftware": {
                 "component": "opensoftware"

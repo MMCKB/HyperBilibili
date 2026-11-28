@@ -12,12 +12,15 @@
       </div>
     </div>
     <div if="{{useRowLayout}}" class="comp-root row">
-      <div class="bar bar-row" style="{{barRowStyle}}" @click="SwitchPage()">
-        <div style="align-items: center; justify-content: center">
+      <div class="bar bar-row" style="{{barRowStyle}}">
+        <div class="bar-main" @click="SwitchPage()">
           <image src="/common/switch.png" style="object-fit: scale-down; width: 32px; height: 32px"></image>
           <text style="font-weight: 600; font-size: 30px; margin-left: 15px">
             {{ _parentVM.$t(title) }}
           </text>
+        </div>
+        <div class="bar-action" if="{{actionText}}" @click="ActionClick">
+          <text class="bar-action-text">{{ _parentVM.$t(actionText) }}</text>
         </div>
         <time-view style="position: absolute"></time-view>
       </div>
@@ -28,7 +31,7 @@
 <script>
 import router from "@system.router"
 export default {
-  props: ["title"],
+  props: ["title", "actionText"],
   data: {
     barRowStyle: {},
     useRowLayout: false
@@ -42,6 +45,9 @@ export default {
         lastpage: pagename[pagename.length - 1]
       }
     })
+  },
+  ActionClick() {
+    this.$emit("actionClick")
   },
   onInit() {
     global.ui.InitPage(this._parentVM)
@@ -82,5 +88,28 @@ export default {
 .bar-row {
   margin-top: 10px;
   margin-left: 100px;
+}
+
+.bar-main {
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+}
+
+.bar-action {
+  height: 36px;
+  padding-left: 10px;
+  padding-right: 10px;
+  margin-left: 8px;
+  border-radius: 18px;
+  background-color: #262626;
+  align-items: center;
+  justify-content: center;
+}
+
+.bar-action-text {
+  font-size: 18px;
+  font-weight: 600;
+  color: #ffffff;
 }
 </style>

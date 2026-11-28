@@ -11,13 +11,13 @@
     <scroll scroll-y="true" class="scroll {{scrclass}}" bounces="true">
       <title-bar title="{{titletext}}" right-text="{{ secmode ? '' : 'replys.sort' }}"
       @right-click="OpenSortPicker"></title-bar>
-      <image style="position: absolute; margin-top: 245px" if="{{anims.show_loading}}" src="{{anims.loading_src.value}}"></image>
-      <list class="replylist">
+      <image class="loading-spin" style="position: absolute; margin-top: 245px" if="{{anims.show_loading}}" src="{{anims.loading_src.value}}"></image>
+      <list class="replylist" id="replyList">
         <list-item type="replies"
           style="width: 100%; justify-content: center; margin-top: 10px; height: {{ReplyItemHeight($item)}}"
           for="{{replies}}">
           <reply secmode={{secmode}} reply="{{$item}}" @show-tools="ShowTools" @reply="Reply"
-            @show-menu="OpenReplyMenu" @like="ToggleReplyLike"></reply>
+            @show-menu="OpenReplyMenu" @like="ToggleReplyLike" @show-mentions="OpenMentionMenu"></reply>
         </list-item>
       </list>
     </scroll>
@@ -25,9 +25,13 @@
       @nextpn="NextPN" @send-comment="OpenSendComment"></floating-page-changer>
     <full-screen-input if="{{replymode}}" @send="SendReply" @exit="ExitInput"></full-screen-input>
     <div class="replymenu-overlay {{ menuClosing ? 'modal-closing' : 'modal-entering' }}" if="{{menuMounted}}">
-      <div class="replymenu-card replymenu-card-{{ menuMode }} {{ menuClosing ? '' : 'modal-panel-entering' }}">
+      <div class="replymenu-card replymenu-card-{{ menuMode }} {{ menuMode === 'actions' && menuCanPin ? 'replymenu-card-actions-pin' : '' }} {{ menuClosing ? '' : 'modal-panel-entering' }}">
         <text class="replymenu-title">{{ menuTitle }}</text>
         <text class="replymenu-excerpt" if="{{ menuExcerpt }}">{{ menuExcerpt }}</text>
+        <div class="replymenu-pinrow" if="{{ menuMode === 'actions' && menuCanPin }}" @click="TogglePin">
+          <text class="replymenu-pinicon">{{ menuPinIsTop ? "↓" : "↑" }}</text>
+          <text class="replymenu-pintext">{{ menuPinIsTop ? "取消置顶" : "置顶评论" }}</text>
+        </div>
         <div class="sortlist" if="{{ menuMode === 'sort' }}">
           <div class="sortoption {{ sortType === $item.value ? 'sortoption-active' : '' }}" for="{{sortOptions}}"
             @click="SelectSort($item.value)">
@@ -48,6 +52,15 @@
           </div>
         </div>
         <div class="replymenu-option" if="{{ menuMode === 'actions' }}" @click="CloseReplyMenu">
+          <text class="replymenu-option-text">取消</text>
+        </div>
+        <scroll scroll-y="true" class="mentionmenu-list" if="{{ menuMode === 'mentions' }}">
+          <div class="mentionmenu-item" for="{{menuMentionUsers}}" @click="JumpMention($item.mid)">
+            <image class="mentionmenu-avatar" src="{{$item.avatar}}@44w_44h" alt="/common/fullgray.png"></image>
+            <text class="mentionmenu-name">{{ $item.uname }}</text>
+          </div>
+        </scroll>
+        <div class="replymenu-option" if="{{ menuMode === 'mentions' }}" @click="CloseReplyMenu">
           <text class="replymenu-option-text">取消</text>
         </div>
         <text class="replymenu-tip" if="{{ menuMode === 'delete' }}">删除后无法恢复，确定删除这条评论吗？</text>
@@ -109,6 +122,10 @@ export default {
     menuReply: null,
     menuCanDelete: false,
     menuCanReport: false,
+    menuCanPin: false,
+    menuPinIsTop: false,
+    pinPending: false,
+    menuMentionUsers: [],
     deletePending: false,
     likeRpidPending: "",
     sortOptions: [
@@ -126,6 +143,7 @@ export default {
       return
     }
 
+    const wasReply = !!this.reply_target
     let result
     try {
       if (this.secmode) {
@@ -154,6 +172,20 @@ export default {
 
       if (result && result.code === 0) {
         prompt.showToast({message: "发送成功"})
+        const newReply = result.data && result.data.reply ? result.data.reply : null
+        if (!this.secmode && !wasReply) {
+          if (this.current_pn !== 1) {
+            this.current_pn = 1
+            await this.LoadReplies()
+          }
+          this.PrependReply(newReply || this.BuildLocalReply(result, content))
+          this.ScrollRepliesToTop()
+        } else if (this.secmode && newReply) {
+          this.PrependReply(newReply)
+          this.ScrollRepliesToTop()
+        } else {
+          this.LoadReplies()
+        }
       } else {
         prompt.showToast({
           message: result
@@ -283,7 +315,10 @@ export default {
     this.menuReply = reply
     this.menuCanDelete = isMine || isOwner
     this.menuCanReport = !isMine
-    if (!this.menuCanDelete && !this.menuCanReport) {
+    this.menuCanPin = !this.secmode && isOwner && !!reply.rpid
+    this.menuPinIsTop = !!reply.isTop
+    this.pinPending = false
+    if (!this.menuCanDelete && !this.menuCanReport && !this.menuCanPin) {
       prompt.showToast({message: "没有可执行的操作"})
       return
     }
@@ -291,6 +326,30 @@ export default {
     this.menuTitle = "评论操作"
     this.menuExcerpt = CleanCommentMessage(reply.content ? reply.content.message : "").substring(0, 40)
     this.ShowReplyMenu()
+  },
+  OpenMentionMenu(evt) {
+    const users = evt && evt.detail ? evt.detail.users : null
+    if (!users || !users.length) return
+    this.menuMentionUsers = users
+    this.menuReply = null
+    this.menuCanDelete = false
+    this.menuCanReport = false
+    this.menuCanPin = false
+    this.menuPinIsTop = false
+    this.menuExcerpt = ""
+    this.menuMode = "mentions"
+    this.menuTitle = "提及的用户"
+    this.ShowReplyMenu()
+  },
+  JumpMention(mid) {
+    if (!mid) return
+    this.CloseReplyMenu()
+    router.push({
+      uri: "pages/user",
+      params: {
+        uid: mid
+      }
+    })
   },
   ShowReplyMenu() {
     clearTimeout(this.menuAnimTimer)
@@ -314,6 +373,38 @@ export default {
   BackToMenuActions() {
     if (this.deletePending) return
     this.menuMode = "actions"
+  },
+  async TogglePin() {
+    if (this.pinPending || !this.menuReply) return
+    this.pinPending = true
+    const pinning = !this.menuPinIsTop
+    try {
+      const result = await global.biliclient.pinReply(
+        String(this.type),
+        String(this.oid),
+        String(this.menuReply.rpid),
+        pinning ? 1 : 0
+      )
+      const code = result ? Number(result.code) : -1
+      if (code === 0) {
+        prompt.showToast({message: pinning ? "置顶成功" : "已取消置顶"})
+        this.CloseReplyMenu()
+        this.current_pn = 1
+        this.LoadReplies()
+      } else {
+        prompt.showToast({
+          message: result
+            ? `操作失败，错误代码：${result.code} 原因：${result.message}`
+            : "操作失败，请重试",
+          duration: 4000
+        })
+      }
+    } catch (e) {
+      global.logger.error("置顶评论失败: ", e)
+      prompt.showToast({message: "操作失败，请重试", duration: 3000})
+    } finally {
+      this.pinPending = false
+    }
   },
   GoReport() {
     const reply = this.menuReply
@@ -368,12 +459,94 @@ export default {
   ReplyHasImages(reply) {
     return IsCommentImagesEnabled() && ExtractCommentPictures(reply).length > 0
   },
+  GetUpActionLines(reply) {
+    const upAction = reply && reply.up_action ? reply.up_action : null
+    let lines = 0
+    if (upAction && upAction.reply) lines++
+    if (upAction && upAction.like) lines++
+    return lines
+  },
+  GetMentionCount(reply) {
+    const content = reply && reply.content ? reply.content : null
+    const members = content && Array.isArray(content.members) ? content.members : []
+    const seen = {}
+    let count = 0
+    for (let i = 0; i < members.length; i++) {
+      const member = members[i] || {}
+      const rawMid = member.mid !== undefined && member.mid !== null ? member.mid : member.uid
+      const mid = rawMid !== undefined && rawMid !== null ? String(rawMid) : ""
+      const uname = member.uname || member.name ? String(member.uname || member.name) : ""
+      if (!mid || !uname || seen[mid]) continue
+      seen[mid] = true
+      count++
+    }
+    return count
+  },
   ReplyItemHeight(reply) {
     const isLast = this.replies.length > 0 && reply.rpid === this.replies[this.replies.length - 1].rpid
     // 最后一条预留悬浮翻页/发送按钮的高度，避免被遮挡
     const baseHeight = isLast ? 285 : 200
     const imageExtra = this.ReplyHasImages(reply) ? 62 : 0
-    return (baseHeight + imageExtra) + "px"
+    const mentionExtra = this.GetMentionCount(reply) > 0 ? 30 : 0
+    const upLines = this.GetUpActionLines(reply)
+    const upExtra = upLines > 0 ? 4 + upLines * 22 : 0
+    return (baseHeight + imageExtra + mentionExtra + upExtra) + "px"
+  },
+  PrependReply(reply) {
+    if (!reply) return
+    const rpid = reply.rpid !== undefined && reply.rpid !== null ? String(reply.rpid) : ""
+    const senderMid = this.GetReplyMid(reply)
+    const normalized = Object.assign({}, reply, {
+      isTop: false,
+      isUp: !!this.upMid && senderMid === this.upMid
+    })
+    if (!normalized.reply_control) {
+      normalized.reply_control = {time_desc: "刚刚", location: ""}
+    } else if (!normalized.reply_control.time_desc) {
+      normalized.reply_control = Object.assign({}, normalized.reply_control, {
+        time_desc: "刚刚"
+      })
+    }
+    const rest = this.replies.filter(function(item) {
+      return !rpid || String(item.rpid) !== rpid
+    })
+    this.replies = [normalized].concat(rest)
+  },
+  BuildLocalReply(result, content) {
+    const account = global.biliclient.accountInfo || {}
+    const levelInfo = account.level_info || {}
+    let rpid = "local_" + Date.now()
+    if (result && result.data) {
+      if (result.data.rpid !== undefined && result.data.rpid !== null) {
+        rpid = result.data.rpid
+      } else if (result.data.rpid_str) {
+        rpid = result.data.rpid_str
+      }
+    }
+    return {
+      rpid: rpid,
+      member: {
+        mid: account.mid || 0,
+        uname: account.uname || "我",
+        avatar: account.face || "",
+        level_info: {current_level: levelInfo.current_level || 0}
+      },
+      content: {message: content},
+      reply_control: {time_desc: "刚刚", location: ""},
+      like: 0,
+      action: 0,
+      rcount: 0
+    }
+  },
+  ScrollRepliesToTop() {
+    setTimeout(() => {
+      try {
+        const list = this.$element("replyList")
+        if (list && list.scrollTo) {
+          list.scrollTo({top: 0, behavior: "smooth"})
+        }
+      } catch (e) {}
+    }, 60)
   },
   NextPN() {
     if (this.current_pn < this.maxpn) {
